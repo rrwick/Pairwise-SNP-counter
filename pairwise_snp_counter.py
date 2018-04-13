@@ -37,6 +37,7 @@ def main():
     # Get commandline arguments and initialise
     args = get_arguments()
     initialise_logging()
+    check_dependencies()
 
     # Execute requested stage
     if args.command == 'mask':
@@ -70,14 +71,28 @@ def initialise_logging():
     logger.setLevel(logging.INFO)
 
 
-def execute_command(command):
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True,
-                            encoding='utf-8')
-    if result.returncode != 0:
+def check_dependencies():
+    # TODO: do we need to check for version as well?
+    command_template = 'which %s'
+    # TODO: add dependencies
+    dependencies = ['samtools']
+    for dependency in dependencies:
+        result = execute_command(command_template % dependency, quiet=True)
+        if result.returncode != 0:
+            logging.critical('Could not find dependency %s' % dependency)
+            logging.critical('%s', result.stderr)
+
+
+def execute_command(command, quiet=False):
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            shell=True, encoding='utf-8')
+    if not quiet and result.returncode != 0:
         # TODO: are we happy with logging over multiple lines?
         logging.critical('Failed to run command: %s', result.args)
         logging.critical('stdout: %s', result.stdout)
         logging.critical('stderr: %s', result.stderr)
+
+    return result
 
 
 if __name__ == '__main__':
