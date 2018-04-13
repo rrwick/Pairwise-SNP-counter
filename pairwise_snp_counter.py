@@ -3,6 +3,7 @@ import argparse
 import pathlib
 import logging
 import subprocess
+import tempfile
 
 
 def get_arguments():
@@ -18,10 +19,10 @@ def get_arguments():
             help='Read type of input reads. [choices: illumina, long]')
 
     parser_align = subparser.add_parser('align')
-    parser_align.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
-            help='Input assembly filepaths, space separated')
-    parser_align.add_argument('--mask_fps', required=True, nargs='+', type=pathlib.Path,
-            help='Input masking filepaths, space separated')
+    parser_align.add_argument('--assembly_fp', required=True, type=pathlib.Path,
+            help='Input assembly filepath, space separated')
+    parser_align.add_argument('--mask_fp', type=pathlib.Path,
+            help='Input masking filepath, space separated')
 
     # TODO: Perform additional argument parsing, checking
     args = parser.parse_args()
@@ -47,10 +48,15 @@ def main():
 
 
 def run_mask(args):
-    pass
+    check_input_mask_files(args)
+    # Create temp working directory
+    with tempfile.TemporaryDirectory() as dh:
+        index_fp = index_assembly(args.assembly_fp, dh)
+        map_reads(index_fp, args.read_fps, args.read_type, dh)
 
 
 def run_align(args):
+    check_input_align_files(args)
     pass
 
 
@@ -75,7 +81,7 @@ def check_dependencies():
     # TODO: do we need to check for version as well?
     command_template = 'which %s'
     # TODO: add dependencies
-    dependencies = ['samtools']
+    dependencies = ['samtools', 'bowtie2']
     for dependency in dependencies:
         result = execute_command(command_template % dependency, quiet=True)
         if result.returncode != 0:
@@ -83,7 +89,18 @@ def check_dependencies():
             logging.critical('%s', result.stderr)
 
 
+def check_input_mask_files(args):
+    # TODO: check that files look like FASTQ and FASTA
+    pass
+
+
+def check_input_align_files(args):
+    # TODO: check that files look like our mask format and FASTA
+    pass
+
+
 def execute_command(command, quiet=False):
+    logging.info(command)
     result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             shell=True, encoding='utf-8')
     if not quiet and result.returncode != 0:
@@ -93,6 +110,30 @@ def execute_command(command, quiet=False):
         logging.critical('stderr: %s', result.stderr)
 
     return result
+
+
+def index_assembly(assembly_fp, temp_directory):
+    command_template = 'bowtie2-build %s %s'
+    execute_command(command_template % (assembly_fp, temp_directory))
+    return pathlib.Path(temp_directory, assembly_fp)
+
+
+def map_reads(index_fp, reads_fp, read_type, temp_directory):
+    sam_fp = pathlib.Path(temp_directory, '%s.sam' % index_fp.stem)
+    # TODO: get correct commands
+    if read_type == 'illumina':
+        # TODO: is it worth refactoring to avoid verbosity?
+        if len(reads_fp) == 1:
+            command_template = 'bowtie2 --sensistive -X 2000 -x -U %s -S %s'
+            command = command_template % (reads_fp, sam_fp)
+        elif len(reads_fp) == 2:
+            command_template = 'bowtie2 --sensistive -X 2000 -x -1 %s -2 %s -S %s'
+            command = command_template % (*reads_fp, sam_fp)
+    elif read_type == 'long':
+        command_template = 'freebayes -U %s > %s'
+        command = command_template % (reads_fp, sam_fp)
+    execute_command(command)
+    return sam_fp
 
 
 if __name__ == '__main__':
