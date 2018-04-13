@@ -10,12 +10,18 @@ def get_arguments():
     subparser = parser.add_subparsers(metavar='mask align', dest='command')
 
     parser_mask = subparser.add_parser('mask')
-    parser_mask.add_argument('--input_fps', required=True, nargs='+', type=pathlib.Path,
-            help='Input file paths')
+    parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
+            help='Input assembly filepath')
+    parser_mask.add_argument('--read_fps', required=True, nargs='+', type=pathlib.Path,
+            help='Input read filepaths, space separated')
+    parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
+            help='Read type of input reads. [choices: illumina, long]')
 
     parser_align = subparser.add_parser('align')
-    parser_align.add_argument('--input_fps', required=True, nargs='+', type=pathlib.Path,
-            help='Input file paths')
+    parser_align.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
+            help='Input assembly filepaths, space separated')
+    parser_align.add_argument('--mask_fps', required=True, nargs='+', type=pathlib.Path,
+            help='Input masking filepaths, space separated')
 
     # TODO: Perform additional argument parsing, checking
     args = parser.parse_args()
