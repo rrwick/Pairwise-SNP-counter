@@ -13,6 +13,7 @@ def get_arguments():
     parser_mask = subparser.add_parser('mask')
     parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
             help='Input assembly filepath')
+    # TODO: paired reads as interleaved?
     parser_mask.add_argument('--read_fps', required=True, nargs='+', type=pathlib.Path,
             help='Input read filepaths, space separated')
     parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
@@ -24,14 +25,36 @@ def get_arguments():
     parser_align.add_argument('--mask_fp', type=pathlib.Path,
             help='Input masking filepath, space separated')
 
-    # TODO: Perform additional argument parsing, checking
     args = parser.parse_args()
     if not args.command:
+        # TODO: print better help info. see samtools for an example with subcommands
         parser.print_help()
         print('\n', end='')
         parser.error('command options include mask or align')
 
+    # TODO: Perform additional argument parsing, checking
+    check_parsed_file_exists(args.assembly_fp, parser)
+    if args.command == 'align':
+        check_parsed_file_exists(args.mask_fp, parser)
+
+    if args.command == 'mask':
+        for read_fp in args.read_fps:
+            check_parsed_file_exists(read_fp, parser)
+
+        if args.read_type == 'illumina':
+            if len(args.read_fps) > 2:
+                parser.error('--read_fps takes no more than two illumina read sets')
+        elif args.read_type == 'long':
+            if len(args.read_fps) > 1:
+                parser.error('--read_fps takes only a single long read set')
+
     return args
+
+
+def check_parsed_file_exists(filepath, parser):
+    # Check that the argument has been set; is not None
+    if filepath and not filepath.exists():
+        parser.error('Input file %s does not exist' % filepath)
 
 
 def main():
@@ -51,13 +74,15 @@ def run_mask(args):
     check_input_mask_files(args)
     # Create temp working directory
     with tempfile.TemporaryDirectory() as dh:
-        index_fp = index_assembly(args.assembly_fp, dh)
-        map_reads(index_fp, args.read_fps, args.read_type, dh)
+        if args.read_type == 'illumina':
+            index_fp = index_assembly(args.assembly_fp, dh)
+            sam_fp = map_illumina_reads(index_fp, args.read_fps, dh)
+        elif args.read_type == 'long':
+            sam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh)
 
 
 def run_align(args):
     check_input_align_files(args)
-    pass
 
 
 def initialise_logging():
@@ -81,12 +106,13 @@ def check_dependencies():
     # TODO: do we need to check for version as well?
     command_template = 'which %s'
     # TODO: add dependencies
-    dependencies = ['samtools', 'bowtie2']
+    dependencies = ['samtools', 'bowtie2', 'minimap2']
     for dependency in dependencies:
         result = execute_command(command_template % dependency, quiet=True)
         if result.returncode != 0:
             logging.critical('Could not find dependency %s' % dependency)
             logging.critical('%s', result.stderr)
+            exit(1)
 
 
 def check_input_mask_files(args):
@@ -100,39 +126,43 @@ def check_input_align_files(args):
 
 
 def execute_command(command, quiet=False):
-    logging.info(command)
-    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                            shell=True, encoding='utf-8')
+    if not quiet:
+        logging.info('Running: %s', command)
+    result = subprocess.run(command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=True,
+                encoding='utf-8')
     if not quiet and result.returncode != 0:
         # TODO: are we happy with logging over multiple lines?
         logging.critical('Failed to run command: %s', result.args)
         logging.critical('stdout: %s', result.stdout)
         logging.critical('stderr: %s', result.stderr)
-
     return result
 
 
 def index_assembly(assembly_fp, temp_directory):
+    index_fp = pathlib.Path(temp_directory, assembly_fp)
     command_template = 'bowtie2-build %s %s'
-    execute_command(command_template % (assembly_fp, temp_directory))
-    return pathlib.Path(temp_directory, assembly_fp)
+    execute_command(command_template % (assembly_fp, index_fp))
+    return index_fp
 
 
-def map_reads(index_fp, reads_fp, read_type, temp_directory):
+def map_illumina_reads(index_fp, read_fps, temp_directory):
     sam_fp = pathlib.Path(temp_directory, '%s.sam' % index_fp.stem)
     # TODO: get correct commands
-    if read_type == 'illumina':
-        # TODO: is it worth refactoring to avoid verbosity?
-        if len(reads_fp) == 1:
-            command_template = 'bowtie2 --sensistive -X 2000 -x -U %s -S %s'
-            command = command_template % (reads_fp, sam_fp)
-        elif len(reads_fp) == 2:
-            command_template = 'bowtie2 --sensistive -X 2000 -x -1 %s -2 %s -S %s'
-            command = command_template % (*reads_fp, sam_fp)
-    elif read_type == 'long':
-        command_template = 'freebayes -U %s > %s'
-        command = command_template % (reads_fp, sam_fp)
+    if len(read_fps) == 1:
+        command = 'bowtie2 --sensitive -X 2000 -x %s -U %s -S %s' % (index_fp, *read_fps, sam_fp)
+    elif len(read_fps) == 2:
+        command = 'bowtie2 --sensitive -X 2000 -x %s -1 %s -2 %s -S %s' % (index_fp, *read_fps, sam_fp)
     execute_command(command)
+    return sam_fp
+
+
+def map_long_reads(assembly_fp, read_fps, temp_directory):
+    # TODO: get correct command
+    sam_fp = pathlib.Path(temp_directory, '%s.sam' % assembly_fp.stem)
+    execute_command('minimap2 -a %s %s > %s' % (assembly_fp, *read_fps, sam_fp))
     return sam_fp
 
 
