@@ -7,14 +7,14 @@ package_name = 'pairwise_snp_counter'
 package_description = 'Call confident SNPs in pairwise comparison'
 package_version = '0.0.1'
 author = 'Holt Lab Coding Group'
-licence = 'GPLv3'
+license = 'GPLv3'
 
 
 # Call setup
 setuptools.setup(
         name=package_name,
         version=package_version,
-        licence=licence,
+        license=license,
         test_suite='tests',
         packages=setuptools.find_packages(),
         scripts=['pairwise_snp_counter.py']
