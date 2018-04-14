@@ -72,8 +72,8 @@ def main():
 
 def run_mask(args):
     check_input_mask_files(args)
-    # Create temp working directory
     with tempfile.TemporaryDirectory() as dh:
+        # Map reads to assembly
         if args.read_type == 'illumina':
             index_fp = index_assembly(args.assembly_fp, dh)
             sam_fp = map_illumina_reads(index_fp, args.read_fps, dh)
@@ -99,16 +99,15 @@ def initialise_logging():
     logger.addHandler(log_filehandler)
     logger.addHandler(log_streamhandler)
     # TODO: expose this option to the command line
-    logger.setLevel(logging.INFO)
+    logger.setLevel(logging.DEBUG)
 
 
 def check_dependencies():
+    # TODO: add all other dependencies
     # TODO: do we need to check for version as well?
-    command_template = 'which %s'
-    # TODO: add dependencies
     dependencies = ['samtools', 'bowtie2', 'minimap2']
     for dependency in dependencies:
-        result = execute_command(command_template % dependency, quiet=True)
+        result = execute_command('which %s' % dependency, check=False)
         if result.returncode != 0:
             logging.critical('Could not find dependency %s' % dependency)
             logging.critical('%s', result.stderr)
@@ -125,26 +124,25 @@ def check_input_align_files(args):
     pass
 
 
-def execute_command(command, quiet=False):
-    if not quiet:
-        logging.info('Running: %s', command)
+def execute_command(command, check=True):
+    logging.debug('Running: %s', command)
     result = subprocess.run(command,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 shell=True,
                 encoding='utf-8')
-    if not quiet and result.returncode != 0:
+    if check and result.returncode != 0:
         # TODO: are we happy with logging over multiple lines?
         logging.critical('Failed to run command: %s', result.args)
         logging.critical('stdout: %s', result.stdout)
         logging.critical('stderr: %s', result.stderr)
+        exit(1)
     return result
 
 
 def index_assembly(assembly_fp, temp_directory):
     index_fp = pathlib.Path(temp_directory, assembly_fp)
-    command_template = 'bowtie2-build %s %s'
-    execute_command(command_template % (assembly_fp, index_fp))
+    execute_command('bowtie2-build %s %s' % (assembly_fp, index_fp))
     return index_fp
 
 
