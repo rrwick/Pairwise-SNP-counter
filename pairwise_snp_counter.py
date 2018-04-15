@@ -12,18 +12,22 @@ def get_arguments():
 
     parser_mask = subparser.add_parser('mask')
     parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
-            help='Input assembly filepath')
+                             help='Input assembly filepath')
     # TODO: paired reads as interleaved?
     parser_mask.add_argument('--read_fps', required=True, nargs='+', type=pathlib.Path,
-            help='Input read filepaths, space separated')
+                             help='Input read filepaths, space separated')
     parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
-            help='Read type of input reads. [choices: illumina, long]')
+                             help='Read type of input reads. [choices: illumina, long]')
+    # TODO: better default thread count - use CPU number to decide?
+    parser_mask.add_argument('--threads', required=False, type=int, default=8,
+                             help='Number of threads')
+    # TODO: option to specify temp directory
 
     parser_align = subparser.add_parser('align')
     parser_align.add_argument('--assembly_fp', required=True, type=pathlib.Path,
-            help='Input assembly filepath, space separated')
+                              help='Input assembly filepath, space separated')
     parser_align.add_argument('--mask_fp', type=pathlib.Path,
-            help='Input masking filepath, space separated')
+                              help='Input masking filepath, space separated')
 
     args = parser.parse_args()
     if not args.command:
@@ -76,9 +80,9 @@ def run_mask(args):
         # Map reads to assembly
         if args.read_type == 'illumina':
             index_fp = index_assembly(args.assembly_fp, dh)
-            sam_fp = map_illumina_reads(index_fp, args.read_fps, dh)
+            bam_fp = map_illumina_reads(index_fp, args.read_fps, dh, args.threads)
         elif args.read_type == 'long':
-            sam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh)
+            bam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh, args.threads)
 
 
 def run_align(args):
@@ -127,10 +131,10 @@ def check_input_align_files(args):
 def execute_command(command, check=True):
     logging.debug('Running: %s', command)
     result = subprocess.run(command,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                shell=True,
-                encoding='utf-8')
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.PIPE,
+                            shell=True,
+                            encoding='utf-8')
     if check and result.returncode != 0:
         # TODO: are we happy with logging over multiple lines?
         logging.critical('Failed to run command: %s', result.args)
@@ -142,26 +146,31 @@ def execute_command(command, check=True):
 
 def index_assembly(assembly_fp, temp_directory):
     index_fp = pathlib.Path(temp_directory, assembly_fp)
-    execute_command('bowtie2-build %s %s' % (assembly_fp, index_fp))
+    execute_command(f'bowtie2-build {assembly_fp} {index_fp}')
     return index_fp
 
 
-def map_illumina_reads(index_fp, read_fps, temp_directory):
-    sam_fp = pathlib.Path(temp_directory, '%s.sam' % index_fp.stem)
-    # TODO: get correct commands
+def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
+    bam_fp = pathlib.Path(temp_directory, f'{index_fp.stem}.bam')
+    command = f'bowtie2 --threads {threads} --sensitive -X 1000 -x {index_fp} '
     if len(read_fps) == 1:
-        command = 'bowtie2 --sensitive -X 2000 -x %s -U %s -S %s' % (index_fp, *read_fps, sam_fp)
+        command += f'-U {read_fps[0]} '
     elif len(read_fps) == 2:
-        command = 'bowtie2 --sensitive -X 2000 -x %s -1 %s -2 %s -S %s' % (index_fp, *read_fps, sam_fp)
+        command += f'-1 {read_fps[0]} -2 {read_fps[1]} '
+    command += f'| samtools sort > {bam_fp}'
     execute_command(command)
-    return sam_fp
+    execute_command(f'samtools index {bam_fp}')
+    return bam_fp
 
 
-def map_long_reads(assembly_fp, read_fps, temp_directory):
-    # TODO: get correct command
-    sam_fp = pathlib.Path(temp_directory, '%s.sam' % assembly_fp.stem)
-    execute_command('minimap2 -a %s %s > %s' % (assembly_fp, *read_fps, sam_fp))
-    return sam_fp
+def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
+    bam_fp = pathlib.Path(temp_directory, f'{assembly_fp.stem}.bam')
+    reads = ' '.join(read_fps)
+    command = f'minimap2 -t {threads} -a -x ava-ont {assembly_fp} {reads} '
+    command += f'| samtools sort > {bam_fp}'
+    execute_command(command)
+    execute_command(f'samtools index {bam_fp}')
+    return bam_fp
 
 
 if __name__ == '__main__':
