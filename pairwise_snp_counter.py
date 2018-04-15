@@ -171,7 +171,7 @@ def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
 def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
     bam_fp = pathlib.Path(temp_directory, f'{assembly_fp.stem}.bam')
     read_fps_str  = ' '.join(str(rfp) for rfp in read_fps)
-    command = f'minimap2 -t {threads} -a -x ava-ont {assembly_fp} {read_fps_str} '
+    command = f'minimap2 -t {threads} -a -x map-ont {assembly_fp} {read_fps_str} '
     command += f'| samtools view -Sb - | samtools sort -f - {bam_fp}'
     execute_command(command)
     execute_command(f'samtools index {bam_fp}')
