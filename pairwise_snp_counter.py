@@ -4,6 +4,8 @@ import pathlib
 import logging
 import subprocess
 import tempfile
+import re
+import math
 
 
 def get_arguments():
@@ -22,6 +24,8 @@ def get_arguments():
     parser_mask.add_argument('--threads', required=False, type=int, default=8,
                              help='Number of threads')
     # TODO: option to specify temp directory
+    parser_mask.add_argument('--exclude', required=False, type=float, default=2.0,
+                             help='Percentage of assembly bases to exclude')
 
     parser_align = subparser.add_parser('align')
     parser_align.add_argument('--assembly_fp', required=True, type=pathlib.Path,
@@ -81,8 +85,12 @@ def run_mask(args):
         if args.read_type == 'illumina':
             index_fp = index_assembly(args.assembly_fp, dh)
             bam_fp = map_illumina_reads(index_fp, args.read_fps, dh, args.threads)
-        elif args.read_type == 'long':
+        else:
+            assert args.read_type == 'long'
             bam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh, args.threads)
+        scores = get_base_scores_from_mpileup(args.assembly_fp, bam_fp)
+        min_score_threshold = get_score_threshold(scores, args.exclude)
+        write_mask_file(scores, min_score_threshold, args.assembly_fp)
 
 
 def run_align(args):
@@ -170,12 +178,83 @@ def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
 
 def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
     bam_fp = pathlib.Path(temp_directory, f'{assembly_fp.stem}.bam')
-    read_fps_str  = ' '.join(str(rfp) for rfp in read_fps)
+    read_fps_str = ' '.join(str(rfp) for rfp in read_fps)
     command = f'minimap2 -t {threads} -a -x map-ont {assembly_fp} {read_fps_str} '
     command += f'| samtools view -Sb - | samtools sort -f - {bam_fp}'
     execute_command(command)
     execute_command(f'samtools index {bam_fp}')
     return bam_fp
+
+
+def get_base_scores_from_mpileup(assembly_fp, bam_fp):
+    """
+    This function returns per-base scores as determined by the allelic depth (AD) information
+    provided by samtools mpileup. Specifically, the score is what fraction of the reads at a
+    position match the assembly's base(s), so higher is better.
+    """
+    scores = {}  # key = contig name, value = list of scores
+    ad_regex = re.compile(r';AD=([\d,]+);')
+
+    command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
+    for line in execute_command(command).stdout.splitlines():
+        if line.startswith('##contig='):
+            contig_name = re.search(r'ID=(\w+)', line).group(1)
+            contig_length = int(re.search(r'length=(\d+)', line).group(1))
+            scores[contig_name] = [None] * contig_length
+        elif line.startswith('#'):
+            continue
+        else:
+            parts = line.split('\t')
+            contig_name = parts[0]
+            pos = int(parts[1]) - 1  # use 0-based indexing
+            length = len(parts[3])
+            allele_depths = [int(x) for x in ad_regex.search(line).group(1).split(',')]
+            ref_depth = allele_depths[0]
+            ref_frac = ref_depth / sum(allele_depths)
+
+            # If this VCF line covers multiples bases (is the case for indels), the score applies
+            # to each base in the range. When multiple VCF lines cover the same base (e.g. an indel
+            # covering a few and a substitution in the same range) then the lower (worst) score is
+            # kept for that base.
+            for i in range(length):
+                if scores[contig_name][pos+i] is None:
+                    scores[contig_name][pos+i] = ref_frac
+                elif ref_frac < scores[contig_name][pos+i]:
+                    scores[contig_name][pos+i] = ref_frac
+
+    # Positions that didn't get a base might have no coverage, which is very bad, so they are given
+    # a score of zero.
+    for contig_name in list(scores.keys()):
+        scores[contig_name] = [x if x is not None else 0.0 for x in scores[contig_name]]
+    return scores
+
+
+def get_score_threshold(scores, percentile):
+    """
+    Returns the given percentile of the scores using the nearest-rank method.
+    https://en.wikipedia.org/wiki/Percentile#The_nearest-rank_method
+    """
+    if not scores:
+        return 0.0
+    sorted_scores = []
+    for contig_scores in scores.values():
+        sorted_scores += contig_scores
+    sorted_scores = sorted(sorted_scores)
+    fraction = percentile / 100.0
+    rank = int(math.ceil(fraction * len(sorted_scores)))
+    if rank == 0:
+        return sorted_scores[0]
+    return sorted_scores[rank - 1]
+
+
+def write_mask_file(scores, min_score_threshold, assembly_fp):
+    mask_fp = f'{assembly_fp}.mask'
+    with open(mask_fp, 'wt') as mask:
+        for contig_name, contig_scores in scores.items():
+            mask.write(contig_name)
+            mask.write('\t')
+            mask.write(','.join((str(x) for x in contig_scores if x < min_score_threshold)))
+            mask.write('\n')
 
 
 if __name__ == '__main__':
