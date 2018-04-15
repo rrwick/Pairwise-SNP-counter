@@ -58,7 +58,7 @@ def get_arguments():
 def check_parsed_file_exists(filepath, parser):
     # Check that the argument has been set; is not None
     if filepath and not filepath.exists():
-        parser.error('Input file %s does not exist' % filepath)
+        parser.error(f'Input file {filepath} does not exist')
 
 
 def main():
@@ -111,10 +111,10 @@ def check_dependencies():
     # TODO: do we need to check for version as well?
     dependencies = ['samtools', 'bowtie2', 'minimap2']
     for dependency in dependencies:
-        result = execute_command('which %s' % dependency, check=False)
+        result = execute_command(f'which {dependency}', check=False)
         if result.returncode != 0:
-            logging.critical('Could not find dependency %s' % dependency)
-            logging.critical('%s', result.stderr)
+            logging.critical(f'Could not find dependency {dependency}')
+            logging.critical(f'{result.stderr}')
             exit(1)
 
 
@@ -129,7 +129,7 @@ def check_input_align_files(args):
 
 
 def execute_command(command, check=True):
-    logging.debug('Running: %s', command)
+    logging.debug(f'Running: {command}')
     result = subprocess.run(command,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
@@ -137,9 +137,9 @@ def execute_command(command, check=True):
                             encoding='utf-8')
     if check and result.returncode != 0:
         # TODO: are we happy with logging over multiple lines?
-        logging.critical('Failed to run command: %s', result.args)
-        logging.critical('stdout: %s', result.stdout)
-        logging.critical('stderr: %s', result.stderr)
+        logging.critical(f'Failed to run command: {result.args}')
+        logging.critical(f'stdout: {result.stdout}')
+        logging.critical(f'stderr: {result.stderr}')
         exit(1)
     return result
 
@@ -157,7 +157,7 @@ def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
         command += f'-U {read_fps[0]} '
     elif len(read_fps) == 2:
         command += f'-1 {read_fps[0]} -2 {read_fps[1]} '
-    command += f'| samtools sort > {bam_fp}'
+    command += f'| samtools view -Sb - | samtools sort -f - {bam_fp}'
     execute_command(command)
     execute_command(f'samtools index {bam_fp}')
     return bam_fp
@@ -165,9 +165,9 @@ def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
 
 def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
     bam_fp = pathlib.Path(temp_directory, f'{assembly_fp.stem}.bam')
-    reads = ' '.join(read_fps)
-    command = f'minimap2 -t {threads} -a -x ava-ont {assembly_fp} {reads} '
-    command += f'| samtools sort > {bam_fp}'
+    read_fps_str  = ' '.join(str(rfp) for rfp in read_fps)
+    command = f'minimap2 -t {threads} -a -x ava-ont {assembly_fp} {read_fps_str} '
+    command += f'| samtools view -Sb - | samtools sort -f - {bam_fp}'
     execute_command(command)
     execute_command(f'samtools index {bam_fp}')
     return bam_fp
