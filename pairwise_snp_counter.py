@@ -130,6 +130,11 @@ def check_input_align_files(args):
 
 def execute_command(command, check=True):
     logging.debug(f'Running: {command}')
+    # TODO: this will abort a series of piped commands if any fails but all stderr will be
+    # returned. Without pipefail, even when processes fail only the last process returncode is
+    # seen (which could be 0). Is it okay that all stderr are returned? We could look at creating
+    # separate subprocess instances and chaining them together in Python
+    command = f'set -o pipefail; {command}'
     result = subprocess.run(command,
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
