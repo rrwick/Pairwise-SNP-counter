@@ -187,6 +187,12 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
 
 
 def get_base_scores_from_mpileup(assembly_fp, bam_fp):
+    command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
+    mpileup_output = execute_command(command).stdout
+    return get_base_scores_from_mpileup_output(mpileup_output)
+
+
+def get_base_scores_from_mpileup_output(mpileup_output):
     """
     This function returns per-base scores as determined by the allelic depth (AD) information
     provided by samtools mpileup. Specifically, the score is what fraction of the reads at a
@@ -195,8 +201,7 @@ def get_base_scores_from_mpileup(assembly_fp, bam_fp):
     scores = {}  # key = contig name, value = list of scores
     ad_regex = re.compile(r';AD=([\d,]+);')
 
-    command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
-    for line in execute_command(command).stdout.splitlines():
+    for line in mpileup_output.splitlines():
         if line.startswith('##contig='):
             contig_name = re.search(r'ID=(\w+)', line).group(1)
             contig_length = int(re.search(r'length=(\d+)', line).group(1))
@@ -217,10 +222,10 @@ def get_base_scores_from_mpileup(assembly_fp, bam_fp):
             # covering a few and a substitution in the same range) then the lower (worst) score is
             # kept for that base.
             for i in range(length):
-                if scores[contig_name][pos+i] is None:
-                    scores[contig_name][pos+i] = ref_frac
-                elif ref_frac < scores[contig_name][pos+i]:
-                    scores[contig_name][pos+i] = ref_frac
+                if scores[contig_name][pos + i] is None:
+                    scores[contig_name][pos + i] = ref_frac
+                elif ref_frac < scores[contig_name][pos + i]:
+                    scores[contig_name][pos + i] = ref_frac
 
     # Positions that didn't get a base might have no coverage, which is very bad, so they are given
     # a score of zero.
