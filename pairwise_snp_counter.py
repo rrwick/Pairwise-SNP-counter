@@ -15,7 +15,6 @@ def get_arguments():
     parser_mask = subparser.add_parser('mask')
     parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
                              help='Input assembly filepath')
-    # TODO: paired reads as interleaved?
     parser_mask.add_argument('--read_fps', required=True, nargs='+', type=pathlib.Path,
                              help='Input read filepaths, space separated')
     parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
@@ -116,7 +115,7 @@ def initialise_logging():
 
 def check_dependencies():
     # TODO: add all other dependencies
-    # TODO: do we need to check for version as well?
+    # TODO: check for version as well
     dependencies = ['samtools', 'bowtie2', 'minimap2']
     for dependency in dependencies:
         result = execute_command(f'which {dependency}', check=False)
@@ -128,6 +127,7 @@ def check_dependencies():
 
 def check_input_mask_files(args):
     # TODO: check that files look like FASTQ and FASTA
+    # TODO: if Illumina reads, check they are in the right order (1, 2, unpaired)
     pass
 
 
@@ -138,10 +138,9 @@ def check_input_align_files(args):
 
 def execute_command(command, check=True):
     logging.debug(f'Running: {command}')
-    # TODO: this will abort a series of piped commands if any fails but all stderr will be
+    # This will abort a series of piped commands if any fails but all stderr will be
     # returned. Without pipefail, even when processes fail only the last process returncode is
-    # seen (which could be 0). Is it okay that all stderr are returned? We could look at creating
-    # separate subprocess instances and chaining them together in Python
+    # seen (which could be 0).
     command = f'set -o pipefail; {command}'
     result = subprocess.run(command,
                             stdout=subprocess.PIPE,
