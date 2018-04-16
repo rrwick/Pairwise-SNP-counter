@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import multiprocessing
+import sys
 
 
 def get_arguments():
@@ -132,17 +133,18 @@ def check_dependencies():
     for dependency, version_data in dependencies.items():
         if not shutil.which(dependency):
             logging.critical(f'Could not find dependency {dependency}')
-            exit(1)
+            sys.exit(1)
         result = execute_command(version_data['vcommand'], check=False)
         try:
             version = version_data['vregex'].search(result.stdout).group(1)
         except AttributeError:
             # TODO: should we have an option to skip dependency check?
             logging.critical(f'Unable to determine version for {dependency}')
-            exit(1)
+            sys.exit(1)
         if LooseVersion(version) < LooseVersion(version_data['vrequired']):
-            logging.critical(f'{dependency} version {version_data["vrequired"]} or high is required')
-            exit(1)
+            logging.critical(f'{dependency} version {version_data["vrequired"]} or high is '
+                             f'required')
+            sys.exit(1)
 
 
 def check_input_mask_files(args):
@@ -173,7 +175,7 @@ def execute_command(command, check=True):
         logging.critical(f'Failed to run command: {result.args}')
         logging.critical(f'stdout: {result.stdout}')
         logging.critical(f'stderr: {result.stderr}')
-        exit(1)
+        sys.exit(1)
     return result
 
 
