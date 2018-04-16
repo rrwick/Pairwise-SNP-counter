@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import argparse
-import pathlib
+from distutils.version import LooseVersion
 import logging
+import math
+import pathlib
+import re
+import shutil
 import subprocess
 import tempfile
-import re
-import math
-import shutil
 
 
 def get_arguments():
@@ -116,13 +117,31 @@ def initialise_logging():
 
 def check_dependencies():
     # TODO: add all other dependencies
-    # TODO: check for version as well
-    dependencies = ['samtools', 'bowtie2', 'minimap2', 'bash']
-    for dependency in dependencies:
-        result = execute_command(f'which {dependency}', check=False)
-        if result.returncode != 0:
+    dependencies = {'samtools': {'vcommand': 'samtools 2>&1',
+                                 'vregex': re.compile(r'Version: ([^ \n]+)'),
+                                 'vrequired': '1.0'},
+                    'bowtie2':  {'vcommand': 'bowtie2 --version',
+                                 'vregex': re.compile(r'^.+version (.+)'),
+                                 'vrequired': '2.0'},
+                    'minimap2': {'vcommand': 'minimap2 --version',
+                                 'vregex': re.compile(r'^(.+)'),
+                                 'vrequired': '2.0'},
+                    'bash':     {'vcommand': 'bash --version',
+                                 'vregex': re.compile(r'^.+version (.+) .+'),
+                                 'vrequired': '1.0'}}
+    for dependency, version_data in dependencies.items():
+        if not shutil.which(dependency):
             logging.critical(f'Could not find dependency {dependency}')
-            logging.critical(f'{result.stderr}')
+            exit(1)
+        result = execute_command(version_data['vcommand'], check=False)
+        try:
+            version = version_data['vregex'].search(result.stdout).group(1)
+        except AttributeError:
+            # TODO: should we have an option to skip dependency check?
+            logging.critical(f'Unable to determine version for {dependency}')
+            exit(1)
+        if LooseVersion(version) < LooseVersion(version_data['vrequired']):
+            logging.critical(f'{dependency} version {version_data["vrequired"]} or high is required')
             exit(1)
 
 
