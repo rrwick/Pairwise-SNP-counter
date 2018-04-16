@@ -278,7 +278,8 @@ def write_mask_file(scores, min_score_threshold, assembly_fp):
         for contig_name, contig_scores in scores.items():
             mask.write(contig_name)
             mask.write('\t')
-            mask.write(','.join((str(x) for x in contig_scores if x < min_score_threshold)))
+            mask.write(','.join((str(i) for i, s in enumerate(contig_scores)
+                                 if s < min_score_threshold)))
             mask.write('\n')
 
 
