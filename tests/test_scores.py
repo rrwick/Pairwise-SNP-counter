@@ -53,6 +53,16 @@ class TestScoreThreshold(unittest.TestCase):
         self.assertEqual(psc.get_score_threshold(scores, 75.0), 15)
         self.assertEqual(psc.get_score_threshold(scores, 100.0), 20)
 
+    def test_get_score_threshold_4(self):
+        """
+        If there are no scores, then the threshold is always zero.
+        """
+        scores = {}
+        self.assertEqual(psc.get_score_threshold(scores, 0.0), 0.0)
+        self.assertEqual(psc.get_score_threshold(scores, 5.0), 0.0)
+        self.assertEqual(psc.get_score_threshold(scores, 20.0), 0.0)
+        self.assertEqual(psc.get_score_threshold(scores, 100.0), 0.0)
+
 
 class TestMpileupOutputParsing(unittest.TestCase):
 
