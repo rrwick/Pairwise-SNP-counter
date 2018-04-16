@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import re
 import math
+import shutil
 
 
 def get_arguments():
@@ -116,7 +117,7 @@ def initialise_logging():
 def check_dependencies():
     # TODO: add all other dependencies
     # TODO: check for version as well
-    dependencies = ['samtools', 'bowtie2', 'minimap2']
+    dependencies = ['samtools', 'bowtie2', 'minimap2', 'bash']
     for dependency in dependencies:
         result = execute_command(f'which {dependency}', check=False)
         if result.returncode != 0:
@@ -146,7 +147,8 @@ def execute_command(command, check=True):
                             stdout=subprocess.PIPE,
                             stderr=subprocess.PIPE,
                             shell=True,
-                            encoding='utf-8')
+                            encoding='utf-8',
+                            executable=shutil.which('bash'))
     if check and result.returncode != 0:
         # TODO: are we happy with logging over multiple lines?
         logging.critical(f'Failed to run command: {result.args}')
