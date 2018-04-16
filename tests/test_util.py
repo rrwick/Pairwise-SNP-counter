@@ -17,11 +17,21 @@ import pairwise_snp_counter as psc
 
 class TestUtilFunctions(unittest.TestCase):
 
-    def test_execute_command(self):
+    def test_execute_command_1(self):
         result = psc.execute_command('echo test', check=False)
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.stdout, 'test\n')
         self.assertEqual(result.stderr, '')
+
+    def test_execute_command_2(self):
+        result = psc.execute_command('echo test 1>&2', check=False)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(result.stdout, '')
+        self.assertEqual(result.stderr, 'test\n')
+
+    def test_execute_command_3(self):
+        result = psc.execute_command('this_is_not_a_valid_command', check=False)
+        self.assertNotEqual(result.returncode, 0)
 
     def test_default_thread_count(self):
         """
