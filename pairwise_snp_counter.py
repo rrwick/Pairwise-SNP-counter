@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import multiprocessing
 
 
 def get_arguments():
@@ -21,8 +22,7 @@ def get_arguments():
                              help='Input read filepaths, space separated')
     parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
                              help='Read type of input reads. [choices: illumina, long]')
-    # TODO: better default thread count - use CPU number to decide?
-    parser_mask.add_argument('--threads', required=False, type=int, default=8,
+    parser_mask.add_argument('--threads', required=False, type=int, default=default_thread_count(),
                              help='Number of threads')
     # TODO: option to specify temp directory
     parser_mask.add_argument('--exclude', required=False, type=float, default=2.0,
@@ -281,6 +281,10 @@ def write_mask_file(scores, min_score_threshold, assembly_fp):
             mask.write(','.join((str(i) for i, s in enumerate(contig_scores)
                                  if s < min_score_threshold)))
             mask.write('\n')
+
+
+def default_thread_count():
+    return min(multiprocessing.cpu_count(), 8)
 
 
 if __name__ == '__main__':
