@@ -114,7 +114,14 @@ def run_mask(args):
 
 
 def run_align(args):
-    check_input_align_files(args)
+    assemblies, masks = check_input_align_files(args)
+    for i in range(len(args.assemblies)):
+        assembly_1 = assemblies[i]
+        mask_1 = load_mask_file(masks[i])
+        for j in range(i+1, len(args.assemblies)):
+            assembly_2 = assemblies[j]
+            mask_2 = load_mask_file(masks[j])
+            snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2)
 
 
 def initialise_logging():
@@ -172,8 +179,21 @@ def check_input_mask_files(args):
 
 
 def check_input_align_files(args):
+    assemblies = args.assembly_fp.split()
+    if len(assemblies) <= 1:
+        logging.critical('At least two assemblies are required')
+        sys.exit(1)
+    if args.mask_fp is None:
+        masks = [x + '.mask' for x in assemblies]
+    else:
+        masks = args.mask_fp.split()
+        if len(assemblies) != len(masks):
+            logging.critical('Number of masks does not equal number of assemblies')
+            sys.exit(1)
+
     # TODO: check that files look like our mask format and FASTA
-    pass
+
+    return assemblies, masks
 
 
 def execute_command(command, check=True):
@@ -271,6 +291,10 @@ def get_base_scores_from_mpileup_output(mpileup_output):
     # a score of zero.
     for contig_name in list(scores.keys()):
         scores[contig_name] = [x if x is not None else 0.0 for x in scores[contig_name]]
+
+    # TODO: maybe 'blur' the scores a bit, so we end up masking not just individual bad bases but
+    # rather regions around bad bases?
+
     return scores
 
 
@@ -303,8 +327,26 @@ def write_mask_file(scores, min_score_threshold, assembly_fp):
             mask.write('\n')
 
 
+def load_mask_file(mask_fp):
+    masked_positions = {}
+    with open(mask_fp, 'rt') as mask:
+        for line in mask:
+            parts = line.rstrip('\n').split('\t')
+            contig_name = parts[0]
+            if parts[1]:
+                positions = [int(x) for x in parts[1].split(',')]
+            else:
+                positions = []
+            masked_positions[contig_name] = positions
+    return masked_positions
+
+
 def default_thread_count():
     return min(multiprocessing.cpu_count(), 8)
+
+
+def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2):
+    return 0  # TEMP
 
 
 if __name__ == '__main__':
