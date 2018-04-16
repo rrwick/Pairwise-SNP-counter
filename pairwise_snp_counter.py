@@ -190,7 +190,7 @@ def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
         command += f'-U {read_fps[0]} '
     elif len(read_fps) == 2:
         command += f'-1 {read_fps[0]} -2 {read_fps[1]} '
-    command += f'| samtools view -Sb - | samtools sort -f - {bam_fp}'
+    command += f'| samtools sort -o {bam_fp}'
     execute_command(command)
     execute_command(f'samtools index {bam_fp}')
     return bam_fp
@@ -200,7 +200,7 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
     bam_fp = pathlib.Path(temp_directory, f'{assembly_fp.stem}.bam')
     read_fps_str = ' '.join(str(rfp) for rfp in read_fps)
     command = f'minimap2 -t {threads} -a -x map-ont {assembly_fp} {read_fps_str} '
-    command += f'| samtools view -Sb - | samtools sort -f - {bam_fp}'
+    command += f'| samtools sort -o {bam_fp}'
     execute_command(command)
     execute_command(f'samtools index {bam_fp}')
     return bam_fp
