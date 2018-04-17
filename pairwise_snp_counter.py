@@ -28,6 +28,7 @@ import subprocess
 import tempfile
 import multiprocessing
 import sys
+from Bio import SeqIO
 
 
 def get_arguments():
@@ -172,10 +173,19 @@ def check_dependencies():
             sys.exit(1)
 
 
+def is_fasta(fName,fType):
+    # Finds any valid (fasta) sequences in a file, returns true if any exist
+    with open(fName, "r") as fh:
+        fParsed = SeqIO.parse(fh, fType)
+        return any(fParsed)
+
+
 def check_input_mask_files(args):
-    # TODO: check that files look like FASTQ and FASTA
+    for read_fp in args.read_fps:
+        if not is_fasta(read_fp, 'fasta'):
+            logging.critical(f'Following file is not valid fasta: {mask_read_fp}')
+            sys.exit(1)
     # TODO: if Illumina reads, check they are in the right order (1, 2, unpaired)
-    pass
 
 
 def check_input_align_files(args):
