@@ -175,15 +175,18 @@ def check_dependencies():
 
 def is_fasta(fName,fType):
     # Finds any valid (fasta) sequences in a file, returns true if any exist
-    with open(fName, "r") as fh:
+    with open(fName, "rU") as fh:
         fParsed = SeqIO.parse(fh, fType)
-        return any(fParsed)
+        try:
+            return any(fParsed)
+        except:
+            return False
 
 
 def check_input_mask_files(args):
     for read_fp in args.read_fps:
-        if not is_fasta(read_fp, 'fasta'):
-            logging.critical(f'Following file is not valid fasta: {mask_read_fp}')
+        if not (is_fasta(read_fp, 'fastq') or is_fasta(read_fp, 'fasta')):
+            logging.critical(f'Following file is not valid fastq or fasta: {read_fp}')
             sys.exit(1)
     # TODO: if Illumina reads, check they are in the right order (1, 2, unpaired)
 
