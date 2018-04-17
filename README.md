@@ -13,7 +13,8 @@ This is a tool to count the number of single nucleotide differences (a.k.a. SNPs
 * [Introduction](#introduction)
 * [Requirements](#requirements)
 * [Installation](#installation)
-* [Example commands](#example-commands)
+* [Example usage](#example-usage)
+* [Full usage](#full-usage)
 * [FAQ](#faq)
 * [License](#license)
 
@@ -21,13 +22,29 @@ This is a tool to count the number of single nucleotide differences (a.k.a. SNPs
 
 ## Introduction
 
-The challenge in counting SNP differences comes from the fact that almost all genome assemblies have errors, leading to false positive SNPs. For example, imagine two identical 5 Mbp bacterial genomes, separately sequenced and assembled. If the assemblies have a quality of Q50 (99.999% accurate), there may be 50 errors in each. Naively counting the SNPs would then give us a value of 100, not the 0 we should get for identical genomes. One can see that for very similar genomes (e.g. 10s of genuine SNPs), the false postives caused by assembly errors can be a serious problem. It is even more problematic for Nanopore-only assemblies (Q30 to Q35), where the false positives number in the thousands.
+The naive way to count SNPs between two assemblies would be to align them to each other and count the differences. This would work great on flawless assemblies, but real assemblies usually have errors that can result in false positive SNPs. For example, imagine two identical 5 Mbp bacterial genomes, separately sequenced and assembled. If the assemblies have an average quality of Q50 (99.999% accurate), there may be 50 errors in each. Naively counting the SNPs could then give us a value near 100, not the 0 we should get for identical genomes. One can see that for very similar genomes (e.g. 10s of genuine SNPs), the false postives caused by assembly errors can be a serious problem. It is even more problematic for Nanopore-only assemblies which may have a average quality of Q30 (99.9% accurate), where the false positives can number in the thousands.
 
-This tool avoids that problem by masking out unreliable parts of genome assemblies, so it can count SNPs only in the reliable regions. It does this in two ways: 1) examining base-level confidence by mapping sequencing reads back to their own assembly, and 2) excluding repeat regions which are difficult to assemble correctly, especially using short reads. This means that even in draft assemblies and noisy assemblies, small numbers of SNP differences can be reliably counted.
+To avoid this problem, this tool masks out unreliable parts of genome assemblies, so it can count SNPs only in the reliable regions. It does this in two ways: 1) examining base-level confidence by mapping sequencing reads back to their own assembly, and 2) excluding repeat regions which are difficult to assemble correctly, especially using short reads. This means that even in draft assemblies and noisy assemblies, small numbers of SNP differences can be reliably counted.
 
 
 
 ## Requirements
+
+### Input data
+
+* Two or more assemblies in FASTA format
+* For each assembly, reads in FASTQ format - _the same reads used to make the assembly_
+
+### Software
+
+Pairwise SNP Counter requires some tools to be installed and available on the command line. If in doubt, open a terminal and try running the commands listed below. If they work, you should be good to go!
+
+| Tool | Command(s) | Read types |
+| ---- | -----------| ---------- |
+| [MUMmer](http://mummer.sourceforge.net/) | `nucmer`, `show-snps` | all |
+| [Samtools](http://www.htslib.org/) | `samtools` | all |
+| [Bowtie2](http://bowtie-bio.sourceforge.net/bowtie2/index.shtml) | `bowtie2-build`, `bowtie2` | short (Illumina) reads |
+| [Minimap2](https://github.com/lh3/minimap2) | `minimap2` | long (Nanopore or PacBio) reads |
 
 
 
@@ -35,7 +52,17 @@ This tool avoids that problem by masking out unreliable parts of genome assembli
 
 
 
-## Example commands
+## Example usage
+
+Pairwise SNP Counter is run into two stages:
+1) Creating a mask file for each assembly.
+    * This step is relatively slow, as it involves aligning reads and assessing each base in the assemblies. However, it only needs to be run once per assembly (_O_(n) complexity).
+2) Conducting pairwise assembly alignment to get SNPs.
+    * This step is much faster, but it is done on every pair of assemblies (_O_(n<sup>2</sup>) complexity) so may be the slow if you have a large number of assemblies to compare.
+
+
+
+## Full usage
 
 
 
