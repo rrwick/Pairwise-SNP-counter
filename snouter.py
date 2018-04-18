@@ -491,8 +491,8 @@ def get_snps_from_nucmer(assembly_1, assembly_2, prefix):
 
 
 def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, dh):
-    snps_1_vs_2 = get_snps_from_nucmer(assembly_1, assembly_2, pathlib.Path(temp_dir, 'out1'))
-    snps_2_vs_1 = get_snps_from_nucmer(assembly_2, assembly_1, pathlib.Path(temp_dir, 'out2'))
+    snps_1_vs_2 = get_snps_from_nucmer(assembly_1, assembly_2, pathlib.Path(dh, 'out1'))
+    snps_2_vs_1 = get_snps_from_nucmer(assembly_2, assembly_1, pathlib.Path(dh, 'out2'))
 
     return 0  # TEMP
 
