@@ -128,14 +128,12 @@ def run_align(args):
             counts[(assembly_2, assembly_1)] = snp_count
 
 
-log_format = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
-
-
 def initialise_logging():
     # TODO: command line arguments for logging; save to file? print to stdout?
     # Set up loggers
     log_filehandler = logging.FileHandler('run.log', mode='w')
     log_streamhandler = logging.StreamHandler()
+    log_format = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
     log_filehandler.setFormatter(log_format)
     log_streamhandler.setFormatter(log_format)
 
@@ -151,11 +149,12 @@ def initialise_logging():
 
 
 def log_newline():
+    logging_formatter = logging.getLogger('').handlers[0].formatter
     for h in logging.getLogger('').handlers:
         h.setFormatter(logging.Formatter(fmt=''))
     logging.info('')
     for h in logging.getLogger('').handlers:
-        h.setFormatter(log_format)
+        h.formatter = logging_formatter
 
 
 def check_dependencies():
