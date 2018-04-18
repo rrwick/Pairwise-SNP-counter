@@ -116,6 +116,7 @@ def run_mask(args):
 
 def run_align(args):
     assemblies, masks = check_input_align_files(args)
+    counts = {}
     for i in range(len(args.assemblies)):
         assembly_1 = assemblies[i]
         mask_1 = load_mask_file(masks[i])
@@ -123,6 +124,11 @@ def run_align(args):
             assembly_2 = assemblies[j]
             mask_2 = load_mask_file(masks[j])
             snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2)
+            counts[(assembly_1, assembly_2)] = snp_count
+            counts[(assembly_2, assembly_1)] = snp_count
+
+
+log_format = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
 
 def initialise_logging():
@@ -130,7 +136,6 @@ def initialise_logging():
     # Set up loggers
     log_filehandler = logging.FileHandler('run.log', mode='w')
     log_streamhandler = logging.StreamHandler()
-    log_format = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
     log_filehandler.setFormatter(log_format)
     log_streamhandler.setFormatter(log_format)
 
@@ -141,9 +146,22 @@ def initialise_logging():
     # TODO: expose this option to the command line
     logger.setLevel(logging.DEBUG)
 
+    # TODO: use colours in stdout
+    # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
+
+
+def log_newline():
+    for h in logging.getLogger('').handlers:
+        h.setFormatter(logging.Formatter(fmt=''))
+    logging.info('')
+    for h in logging.getLogger('').handlers:
+        h.setFormatter(log_format)
+
 
 def check_dependencies():
     # TODO: add all other dependencies
+    log_newline()
+    logging.info('Checking program dependencies')
     dependencies = {'samtools': {'vcommand': 'samtools 2>&1',
                                  'vregex': re.compile(r'Version: ([^ \n]+)'),
                                  'vrequired': '1.0'},
@@ -184,6 +202,8 @@ def is_fasta(fName,fType):
 
 
 def check_input_mask_files(args):
+    log_newline()
+    logging.info('Checking read file integrity')
     for read_fp in args.read_fps:
         if not (is_fasta(read_fp, 'fastq') or is_fasta(read_fp, 'fasta')):
             logging.critical(f'Following file is not valid fastq or fasta: {read_fp}')
@@ -231,12 +251,14 @@ def execute_command(command, check=True):
 
 
 def index_assembly(assembly_fp, temp_directory):
+    logging.info(f'Building a Bowtie2 index for {assembly_fp}')
     index_fp = pathlib.Path(temp_directory, assembly_fp)
     execute_command(f'bowtie2-build {assembly_fp} {index_fp}')
     return index_fp
 
 
 def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
+    logging.info(f'Aligning Illumina reads to with Bowtie2')
     bam_fp = pathlib.Path(temp_directory, f'{index_fp.stem}.bam')
     command = f'bowtie2 --threads {threads} --sensitive -X 1000 -x {index_fp} '
     if len(read_fps) == 1:
@@ -250,6 +272,7 @@ def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
 
 
 def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
+    logging.info(f'Aligning long reads to {assembly_fp} with Minimap2')
     bam_fp = pathlib.Path(temp_directory, f'{assembly_fp.stem}.bam')
     read_fps_str = ' '.join(str(rfp) for rfp in read_fps)
     command = f'minimap2 -t {threads} -a -x map-ont {assembly_fp} {read_fps_str} '
@@ -260,6 +283,7 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
 
 
 def get_base_scores_from_mpileup(assembly_fp, bam_fp):
+    logging.info(f'Get base-level metrics for {assembly_fp} using Samtools mpileup')
     command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
     mpileup_output = execute_command(command).stdout
     return get_base_scores_from_mpileup_output(mpileup_output)
