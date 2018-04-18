@@ -1,9 +1,9 @@
-# Pairwise SNP Counter
-[![Build Status](https://travis-ci.org/rrwick/Pairwise-SNP-counter.svg?branch=master)](https://travis-ci.org/rrwick/Pairwise-SNP-counter) [![License GPL v3](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.en.html) [![Coverage Status](https://coveralls.io/repos/github/rrwick/Pairwise-SNP-counter/badge.svg?branch=master)](https://coveralls.io/github/rrwick/Pairwise-SNP-counter?branch=master)
+# Snouter
+[![Build Status](https://travis-ci.org/rrwick/Snouter.svg?branch=master)](https://travis-ci.org/rrwick/Snouter) [![License GPL v3](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.en.html) [![Coverage Status](https://coveralls.io/repos/github/rrwick/Snouter/badge.svg?branch=master)](https://coveralls.io/github/rrwick/Snouter?branch=master)
 
 __IMPORTANT NOTE: This tool is in active development and not yet ready for general use. Check back soon!__
 
-This is a tool to count the number of single nucleotide differences (a.k.a. SNPs) between very similar bacterial genome assemblies. It works with many types of assemblies: fragmented draft assemblies from Illumina reads, long read assemblies with a higher error rate, and completed assemblies.
+Snouter is a tool to count the number of single nucleotide differences (a.k.a. SNPs) between very similar bacterial genome assemblies. It works with many types of assemblies: fragmented draft assemblies from Illumina reads, long read assemblies with a higher error rate, and completed assemblies.
 
 
 
@@ -37,7 +37,7 @@ To avoid this problem, this tool masks out unreliable parts of genome assemblies
 
 ### Software
 
-Pairwise SNP Counter requires some tools to be installed and available on the command line. If in doubt, open a terminal and try running the commands listed below. If they work, you should be good to go!
+Snouter requires some tools to be installed and available on the command line. If in doubt, open a terminal and try running the commands listed below. If they work, you should be good to go!
 
 | Tool | Command(s) | Read types |
 | ---- | -----------| ---------- |
@@ -54,7 +54,7 @@ Pairwise SNP Counter requires some tools to be installed and available on the co
 
 ## Example usage
 
-Pairwise SNP Counter is run into two stages:
+Snouter is run into two stages:
 1) Creating a mask file for each assembly.
     * This step is relatively slow, as it involves aligning reads and assessing each base in the assemblies. However, it only needs to be run once per assembly (_O_(n) complexity).
 2) Conducting pairwise assembly alignment to get SNPs.
