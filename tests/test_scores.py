@@ -1,6 +1,6 @@
 """
 Copyright 2018 Ryan Wick (rrwick@gmail.com), Stephen Watts, Alex Tokolyi
-https://github.com/rrwick/Pairwise-SNP-counter
+https://github.com/rrwick/Snouter
 
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU
 General Public License as published by the Free Software Foundation, either version 3 of the
@@ -12,7 +12,7 @@ have received a copy of the GNU General Public License along with this program. 
 """
 
 import unittest
-import pairwise_snp_counter as psc
+import snouter
 import pathlib
 
 
@@ -23,23 +23,23 @@ class TestScoreThreshold(unittest.TestCase):
         Example 1 from https://en.wikipedia.org/wiki/Percentile#The_nearest-rank_method
         """
         scores = {'contig_1': [35, 15, 50], 'contig_2': [40, 20]}
-        self.assertEqual(psc.get_score_threshold(scores, 0.0), 15)
-        self.assertEqual(psc.get_score_threshold(scores, 5.0), 15)
-        self.assertEqual(psc.get_score_threshold(scores, 30.0), 20)
-        self.assertEqual(psc.get_score_threshold(scores, 40.0), 20)
-        self.assertEqual(psc.get_score_threshold(scores, 50.0), 35)
-        self.assertEqual(psc.get_score_threshold(scores, 100.0), 50)
+        self.assertEqual(snouter.get_score_threshold(scores, 0.0), 15)
+        self.assertEqual(snouter.get_score_threshold(scores, 5.0), 15)
+        self.assertEqual(snouter.get_score_threshold(scores, 30.0), 20)
+        self.assertEqual(snouter.get_score_threshold(scores, 40.0), 20)
+        self.assertEqual(snouter.get_score_threshold(scores, 50.0), 35)
+        self.assertEqual(snouter.get_score_threshold(scores, 100.0), 50)
 
     def test_get_score_threshold_2(self):
         """
         Example 2 from https://en.wikipedia.org/wiki/Percentile#The_nearest-rank_method
         """
         scores = {'contig_1': [13, 15, 6, 7, 8, 20, 3, 8, 10, 16]}
-        self.assertEqual(psc.get_score_threshold(scores, 0.0), 3)
-        self.assertEqual(psc.get_score_threshold(scores, 25.0), 7)
-        self.assertEqual(psc.get_score_threshold(scores, 50.0), 8)
-        self.assertEqual(psc.get_score_threshold(scores, 75.0), 15)
-        self.assertEqual(psc.get_score_threshold(scores, 100.0), 20)
+        self.assertEqual(snouter.get_score_threshold(scores, 0.0), 3)
+        self.assertEqual(snouter.get_score_threshold(scores, 25.0), 7)
+        self.assertEqual(snouter.get_score_threshold(scores, 50.0), 8)
+        self.assertEqual(snouter.get_score_threshold(scores, 75.0), 15)
+        self.assertEqual(snouter.get_score_threshold(scores, 100.0), 20)
 
     def test_get_score_threshold_3(self):
         """
@@ -47,21 +47,21 @@ class TestScoreThreshold(unittest.TestCase):
         """
         scores = {'contig_1': [3, 8], 'contig_2': [6, 9], 'contig_3': [7, 10], 'contig_4': [8, 13],
                   'contig_5': [20], 'contig_6': [16], 'contig_7': [15]}
-        self.assertEqual(psc.get_score_threshold(scores, 0.0), 3)
-        self.assertEqual(psc.get_score_threshold(scores, 25.0), 7)
-        self.assertEqual(psc.get_score_threshold(scores, 50.0), 9)
-        self.assertEqual(psc.get_score_threshold(scores, 75.0), 15)
-        self.assertEqual(psc.get_score_threshold(scores, 100.0), 20)
+        self.assertEqual(snouter.get_score_threshold(scores, 0.0), 3)
+        self.assertEqual(snouter.get_score_threshold(scores, 25.0), 7)
+        self.assertEqual(snouter.get_score_threshold(scores, 50.0), 9)
+        self.assertEqual(snouter.get_score_threshold(scores, 75.0), 15)
+        self.assertEqual(snouter.get_score_threshold(scores, 100.0), 20)
 
     def test_get_score_threshold_4(self):
         """
         If there are no scores, then the threshold is always zero.
         """
         scores = {}
-        self.assertEqual(psc.get_score_threshold(scores, 0.0), 0.0)
-        self.assertEqual(psc.get_score_threshold(scores, 5.0), 0.0)
-        self.assertEqual(psc.get_score_threshold(scores, 20.0), 0.0)
-        self.assertEqual(psc.get_score_threshold(scores, 100.0), 0.0)
+        self.assertEqual(snouter.get_score_threshold(scores, 0.0), 0.0)
+        self.assertEqual(snouter.get_score_threshold(scores, 5.0), 0.0)
+        self.assertEqual(snouter.get_score_threshold(scores, 20.0), 0.0)
+        self.assertEqual(snouter.get_score_threshold(scores, 100.0), 0.0)
 
 
 class TestMpileupOutputParsing(unittest.TestCase):
@@ -73,7 +73,7 @@ class TestMpileupOutputParsing(unittest.TestCase):
         mpileup_output_filename = pathlib.Path(__file__).parent / 'mpileup_output_1'
         with open(mpileup_output_filename, 'rt') as mpileup_output_file:
             mpileup_output = mpileup_output_file.read()
-        scores = psc.get_base_scores_from_mpileup_output(mpileup_output)
+        scores = snouter.get_base_scores_from_mpileup_output(mpileup_output)
 
         # Test some individual bases.
         self.assertAlmostEqual(scores['chromosome'][0], 6 / 14)
@@ -98,7 +98,7 @@ class TestMpileupOutputParsing(unittest.TestCase):
         mpileup_output_filename = pathlib.Path(__file__).parent / 'mpileup_output_2'
         with open(mpileup_output_filename, 'rt') as mpileup_output_file:
             mpileup_output = mpileup_output_file.read()
-        scores = psc.get_base_scores_from_mpileup_output(mpileup_output)
+        scores = snouter.get_base_scores_from_mpileup_output(mpileup_output)
 
         # This base is (unusually for a Nanopore assembly) not covered by an indel.
         self.assertAlmostEqual(scores['chromosome'][29], 50 / 57)

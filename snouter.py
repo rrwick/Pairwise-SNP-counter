@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 Copyright 2018 Ryan Wick (rrwick@gmail.com), Stephen Watts, Alex Tokolyi
-https://github.com/rrwick/Pairwise-SNP-counter
+https://github.com/rrwick/Snouter
 
-This is a command line tool for counting the single-nucleotide differences (a.k.a. SNPs) between
+Snouter is a command line tool for counting the single-nucleotide differences (a.k.a. SNPs) between
 two closely related assemblies.
 
 TODO: add some example commands here.

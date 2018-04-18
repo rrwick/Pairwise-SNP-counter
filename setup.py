@@ -3,7 +3,7 @@ import setuptools
 
 
 # Set package details
-package_name = 'pairwise_snp_counter'
+package_name = 'Snouter'
 package_description = 'Call confident SNPs in pairwise comparison'
 package_version = '0.0.1'
 author = 'Holt Lab Coding Group'
@@ -17,5 +17,5 @@ setuptools.setup(
         license=license,
         test_suite='tests',
         packages=setuptools.find_packages(),
-        scripts=['pairwise_snp_counter.py']
+        scripts=['snouter.py']
         )
