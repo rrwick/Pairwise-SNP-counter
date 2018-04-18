@@ -38,6 +38,7 @@ def get_arguments():
     parser_mask = subparser.add_parser('mask')
     parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
                              help='Input assembly filepath')
+    # TODO: --read_fps help info stating expected read order
     parser_mask.add_argument('--read_fps', required=True, nargs='+', type=pathlib.Path,
                              help='Input read filepaths, space separated')
     parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
@@ -68,8 +69,8 @@ def get_arguments():
             check_parsed_file_exists(read_fp, parser)
 
         if args.read_type == 'illumina':
-            if len(args.read_fps) > 2:
-                parser.error('--read_fps takes no more than two illumina read sets')
+            if len(args.read_fps) > 3:
+                parser.error('--read_fps takes no more than three illumina read sets')
         elif args.read_type == 'long':
             if len(args.read_fps) > 1:
                 parser.error('--read_fps takes only a single long read set')
@@ -255,6 +256,21 @@ def check_input_mask_files(args):
         logging.critical('Read files must be all FASTQ or all FASTA (not a mixture of both)')
         sys.exit(1)
     assert len(read_filetypes) == 1
+
+    read_names = list()
+    if len(args.read_fps) > 1:
+        for read_fp in args.read_fps:
+            with get_open_function(read_fp)(read_fp, 'rt') as fh:
+                read_names.append(fh.readline())
+        for forward_char, reverse_char in zip(*read_names[:2]):
+            if forward_char != reverse_char:
+                break
+        if forward_char != '1' or reverse_char != '2':
+            msg = 'Read sets specified in --read_fps do not appear to be paired.'
+            msg += ' Reads are expected to be passed as --read_fps <forward> <reverse> or '
+            msg += ' --read_fps <forward> <reverse> <unpaired>'
+            logging.critical(msg)
+            sys.exit(1)
     return list(read_filetypes)[0]
 
 
@@ -309,6 +325,8 @@ def map_illumina_reads(index_fp, read_fps, temp_directory, threads, read_filetyp
         command += f'-U {read_fps[0]} '
     elif len(read_fps) == 2:
         command += f'-1 {read_fps[0]} -2 {read_fps[1]} '
+    elif len(read_fps) == 3:
+        command += f'-1 {read_fps[0]} -2 {read_fps[1]} -U {read_fps[2]}'
     command += f'| samtools sort -o {bam_fp}'
     execute_command(command)
     execute_command(f'samtools index {bam_fp}')
