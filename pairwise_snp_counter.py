@@ -355,6 +355,8 @@ def get_score_threshold(scores, percentile):
 def write_mask_file(scores, min_score_threshold, assembly_fp):
     mask_fp = f'{assembly_fp}.mask'
     with open(mask_fp, 'wt') as mask:
+        mask.write('\t'.join(('contig_name', 'contig_scores')))
+        mask.write('\n')
         for contig_name, contig_scores in scores.items():
             mask.write(contig_name)
             mask.write('\t')
@@ -366,6 +368,8 @@ def write_mask_file(scores, min_score_threshold, assembly_fp):
 def load_mask_file(mask_fp):
     masked_positions = {}
     with open(mask_fp, 'rt') as mask:
+        # Skip header
+        mask.readline()
         for line in mask:
             parts = line.rstrip('\n').split('\t')
             contig_name = parts[0]
