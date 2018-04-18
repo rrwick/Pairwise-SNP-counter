@@ -354,6 +354,7 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
 
 
 def get_base_scores_from_mpileup(assembly_fp, bam_fp):
+    log_newline()
     logging.info(f'Get base-level metrics for {assembly_fp} using Samtools mpileup')
     command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
     mpileup_output = execute_command(command).stdout
@@ -371,8 +372,9 @@ def get_base_scores_from_mpileup_output(mpileup_output):
 
     for line in mpileup_output.splitlines():
         if line.startswith('##contig='):
-            contig_name = re.search(r'ID=(\w+)', line).group(1)
+            contig_name = re.search(r'<ID=([^, ]+)', line).group(1)
             contig_length = int(re.search(r'length=(\d+)', line).group(1))
+            logging.debug(f'contig {contig_name}: {contig_length} bp')
             scores[contig_name] = [None] * contig_length
         elif line.startswith('#'):
             continue
@@ -457,7 +459,31 @@ def default_thread_count():
     return min(multiprocessing.cpu_count(), 8)
 
 
+class Snp(object):
+    def __init__(self, show_snps_line):
+        parts = show_snps_line.strip().split('\t')
+        self.assembly_1_pos = int(parts[0])
+        self.assembly_1_base = parts[1]
+        self.assembly_2_base = parts[2]
+        self.assembly_2_pos = int(parts[3])
+        self.assembly_1_strand = int(parts[6])
+        self.assembly_2_strand = int(parts[7])
+        self.dist_to_contig_end = int(parts[5])
+        self.assembly_1_contig_name = parts[8]
+        self.assembly_2_contig_name = parts[9]
+
+
+def get_snps_from_nucmer(assembly_1, assembly_2, prefix):
+    execute_command(f'nucmer --prefix={prefix} {assembly_1} {assembly_2}')
+    show_snps_output = execute_command('show-snps -CrTH {prefix}.delta').stdout
+    return [Snp(x) for x in show_snps_output.splitlines()]
+
+
 def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        snps_1_vs_2 = get_snps_from_nucmer(assembly_1, assembly_2, pathlib.Path(temp_dir, 'out1'))
+        snps_2_vs_1 = get_snps_from_nucmer(assembly_2, assembly_1, pathlib.Path(temp_dir, 'out2'))
+
     return 0  # TEMP
 
 
