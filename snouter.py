@@ -54,6 +54,8 @@ def get_arguments():
                               help='Input assembly filepaths, space separated')
     parser_count.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
                               help='Input masking filepaths, space separated')
+    # TODO: option for output format: simple counts (one pairwise count per line), count matrix or
+    #       PHYLIP distance matrix (for tree-building).
 
     parser.add_argument('--tmp_dir', required=False, type=pathlib.Path,
                         help='If desired, input a directory to use as temporary')
@@ -164,6 +166,7 @@ def run_count(args, dh):
             snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, dh)
             counts[(assembly_1, assembly_2)] = snp_count
             counts[(assembly_2, assembly_1)] = snp_count
+    # TODO: save results to file, in user's preferred format
 
 
 def initialise_logging():
@@ -182,7 +185,7 @@ def initialise_logging():
     # TODO: expose this option to the command line
     logger.setLevel(logging.DEBUG)
 
-    # TODO: use colours in stdout
+    # TODO: use colours in stdout: red for critical, dim for debug?
     # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
 
 
@@ -200,7 +203,6 @@ def log_no_format(msg):
 
 
 def check_dependencies():
-    # TODO: add all other dependencies
     log_newline()
     logging.info('Checking program dependencies')
     dependencies = {'samtools': {'vcommand': 'samtools 2>&1',
@@ -385,6 +387,7 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
 
 
 def get_base_scores_from_mpileup(assembly_fp, bam_fp):
+    # TODO: split this over multiple threads, by using samtools' -r option
     log_newline()
     logging.info(f'Get base-level metrics for {assembly_fp} using Samtools mpileup')
     command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
