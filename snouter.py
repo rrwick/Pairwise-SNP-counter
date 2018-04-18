@@ -33,6 +33,7 @@ import tempfile
 
 def get_arguments():
     parser = argparse.ArgumentParser()
+
     subparser = parser.add_subparsers(metavar='mask align', dest='command')
 
     parser_mask = subparser.add_parser('mask')
@@ -45,7 +46,6 @@ def get_arguments():
                              help='Read type of input reads. [choices: illumina, long]')
     parser_mask.add_argument('--threads', required=False, type=int, default=default_thread_count(),
                              help='Number of threads')
-    # TODO: option to specify temp directory
     parser_mask.add_argument('--exclude', required=False, type=float, default=2.0,
                              help='Percentage of assembly bases to exclude')
 
@@ -54,6 +54,9 @@ def get_arguments():
                               help='Input assembly filepaths, space separated')
     parser_align.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
                               help='Input masking filepaths, space separated')
+
+    parser.add_argument('--tmp_dir', required=False, type=pathlib.Path,
+                        help='If desired, input a directory to use as temporary')
 
     args = parser.parse_args()
     if not args.command:
@@ -92,36 +95,44 @@ def check_parsed_file_exists(filepath, parser):
     if filepath and not filepath.exists():
         parser.error(f'Input file {filepath} does not exist')
 
-
 def main():
     # Get commandline arguments and initialise
     args = get_arguments()
     initialise_logging()
     check_dependencies()
 
+    # Initialise temporary directory
+    if args.tmp_dir:
+        if args.tmp_dir.exists():
+            tmp_dir = tempfile.TemporaryDirectory(dir=args.tmp_dir)
+        else:
+            logging.critical(f'Specified temporary directory ({args.tmp_dir}) does not exist')
+            sys.exit(1)
+    else:
+        tmp_dir = tempfile.TemporaryDirectory()
+
     # Execute requested stage
     if args.command == 'mask':
-        run_mask(args)
+        run_mask(args, tmp_dir.name)
     elif args.command == 'align':
-        run_align(args)
+        run_align(args, tmp_dir.name)
 
 
-def run_mask(args):
+def run_mask(args, dh):
     read_filetype = check_input_mask_files(args)
-    with tempfile.TemporaryDirectory() as dh:
-        # Map reads to assembly
-        if args.read_type == 'illumina':
-            index_fp = index_assembly(args.assembly_fp, dh)
-            bam_fp = map_illumina_reads(index_fp, args.read_fps, dh, args.threads, read_filetype)
-        else:
-            assert args.read_type == 'long'
-            bam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh, args.threads)
-        scores = get_base_scores_from_mpileup(args.assembly_fp, bam_fp)
-        min_score_threshold = get_score_threshold(scores, args.exclude)
-        write_mask_file(scores, min_score_threshold, args.assembly_fp)
+    # Map reads to assembly
+    if args.read_type == 'illumina':
+        index_fp = index_assembly(args.assembly_fp, dh)
+        bam_fp = map_illumina_reads(index_fp, args.read_fps, dh, args.threads, read_filetype)
+    else:
+        assert args.read_type == 'long'
+        bam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh, args.threads)
+    scores = get_base_scores_from_mpileup(args.assembly_fp, bam_fp)
+    min_score_threshold = get_score_threshold(scores, args.exclude)
+    write_mask_file(scores, min_score_threshold, args.assembly_fp)
 
 
-def run_align(args):
+def run_align(args, dh):
     check_input_align_files(args)
     counts = {}
     for i in range(len(args.assembly_fps)):
@@ -130,7 +141,7 @@ def run_align(args):
         for j in range(i+1, len(args.assemblies)):
             assembly_2 = args.assembly_fps[j]
             mask_2 = load_mask_file(args.mask_fps[j])
-            snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2)
+            snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, dh)
             counts[(assembly_1, assembly_2)] = snp_count
             counts[(assembly_2, assembly_1)] = snp_count
 
@@ -479,10 +490,9 @@ def get_snps_from_nucmer(assembly_1, assembly_2, prefix):
     return [Snp(x) for x in show_snps_output.splitlines()]
 
 
-def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2):
-    with tempfile.TemporaryDirectory() as temp_dir:
-        snps_1_vs_2 = get_snps_from_nucmer(assembly_1, assembly_2, pathlib.Path(temp_dir, 'out1'))
-        snps_2_vs_1 = get_snps_from_nucmer(assembly_2, assembly_1, pathlib.Path(temp_dir, 'out2'))
+def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, dh):
+    snps_1_vs_2 = get_snps_from_nucmer(assembly_1, assembly_2, pathlib.Path(temp_dir, 'out1'))
+    snps_2_vs_1 = get_snps_from_nucmer(assembly_2, assembly_1, pathlib.Path(temp_dir, 'out2'))
 
     return 0  # TEMP
 
