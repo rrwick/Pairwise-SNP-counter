@@ -94,9 +94,8 @@ def main():
 
 
 def check_arguments(args):
-
     log_newline()
-    logging.debug('Checking arguments')
+    logging.info('Checking arguments')
 
     # TODO: Perform additional argument parsing, checking
     if args.command == 'mask':
@@ -169,24 +168,36 @@ def run_count(args, dh):
     # TODO: save results to file, in user's preferred format
 
 
+class ColourFormatter(logging.Formatter):
+    def format(self, record):
+        s = super().format(record)
+        if record.levelname == 'DEBUG':
+            return '\033[2m' + s + '\033[0m'  # dim
+        elif record.levelname == 'CRITICAL':
+            return '\033[31m' + s + '\033[0m'  # red
+        else:
+            return s
+
+
 def initialise_logging():
     # TODO: command line arguments for logging; save to file? print to stdout?
-    # Set up loggers
-    log_filehandler = logging.FileHandler('run.log', mode='w')
-    log_streamhandler = logging.StreamHandler()
-    log_format = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
-    log_filehandler.setFormatter(log_format)
-    log_streamhandler.setFormatter(log_format)
 
-    # Add log handles to root logger and set log level
+    fmt_str = '%(asctime)s %(message)s'
+    datefmt_str = '%d/%m/%Y %H:%M:%S'
     logger = logging.getLogger()
+
+    log_filehandler = logging.FileHandler('run.log', mode='w')
+    file_formatter = logging.Formatter(fmt=fmt_str, datefmt=datefmt_str)
+    log_filehandler.setFormatter(file_formatter)
     logger.addHandler(log_filehandler)
+
+    log_streamhandler = logging.StreamHandler()
+    stdout_formatter = ColourFormatter(fmt=fmt_str, datefmt=datefmt_str)
+    log_streamhandler.setFormatter(stdout_formatter)
     logger.addHandler(log_streamhandler)
+
     # TODO: expose this option to the command line
     logger.setLevel(logging.DEBUG)
-
-    # TODO: use colours in stdout: red for critical, dim for debug?
-    # https://stackoverflow.com/questions/384076/how-can-i-color-python-logging-output
 
 
 def log_newline():
@@ -194,12 +205,12 @@ def log_newline():
 
 
 def log_no_format(msg):
-    logging_formatter = logging.getLogger('').handlers[0].formatter
-    for h in logging.getLogger('').handlers:
+    saved_formatters = [x.formatter for x in logging.getLogger().handlers]
+    for h in logging.getLogger().handlers:
         h.setFormatter(logging.Formatter(fmt=''))
     logging.info(msg)
-    for h in logging.getLogger('').handlers:
-        h.formatter = logging_formatter
+    for i, formatter in enumerate(saved_formatters):
+        logging.getLogger().handlers[i].formatter = formatter
 
 
 def check_dependencies():
@@ -287,12 +298,12 @@ def check_input_mask_files(args):
     logging.info('Checking input file types')
 
     assembly_filetype = get_sequence_filetype(args.assembly_fp)
-    logging.info(f'{args.assembly_fp} ({assembly_filetype})')
+    logging.debug(f'{args.assembly_fp} ({assembly_filetype})')
 
     read_filetypes = set()
     for read_fp in args.read_fps:
         read_filetype = get_sequence_filetype(read_fp)
-        logging.info(f'{read_fp} ({read_filetype})')
+        logging.debug(f'{read_fp} ({read_filetype})')
         read_filetypes.add(read_filetype)
     if args.read_type == 'illumina' and len(read_filetypes) > 1:
         logging.critical('Read files must be all FASTQ or all FASTA (not a mixture of both)')
