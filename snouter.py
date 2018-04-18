@@ -34,7 +34,7 @@ import tempfile
 def get_arguments():
     parser = argparse.ArgumentParser()
 
-    subparser = parser.add_subparsers(metavar='mask align', dest='command')
+    subparser = parser.add_subparsers(metavar='mask count', dest='command')
 
     parser_mask = subparser.add_parser('mask')
     parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
@@ -49,10 +49,10 @@ def get_arguments():
     parser_mask.add_argument('--exclude', required=False, type=float, default=2.0,
                              help='Percentage of assembly bases to exclude')
 
-    parser_align = subparser.add_parser('align')
-    parser_align.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
+    parser_count = subparser.add_parser('count')
+    parser_count.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
                               help='Input assembly filepaths, space separated')
-    parser_align.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
+    parser_count.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
                               help='Input masking filepaths, space separated')
 
     parser.add_argument('--tmp_dir', required=False, type=pathlib.Path,
@@ -63,7 +63,7 @@ def get_arguments():
         # TODO: print better help info. see samtools for an example with subcommands
         parser.print_help()
         print('\n', end='')
-        parser.error('command options include mask or align')
+        parser.error('command options include mask or count')
 
     # TODO: Perform additional argument parsing, checking
     check_parsed_file_exists(args.assembly_fp, parser)
@@ -78,7 +78,7 @@ def get_arguments():
             if len(args.read_fps) > 1:
                 parser.error('--read_fps takes only a single long read set')
 
-    if args.command == 'align':
+    if args.command == 'count':
         if len(args.assembly_fps) < 2:
             parser.error('Two or more assemblies are required, got {len(args.assembly_fps}')
         if not args.mask_fps:
@@ -94,6 +94,7 @@ def check_parsed_file_exists(filepath, parser):
     # Check that the argument has been set; is not None
     if filepath and not filepath.exists():
         parser.error(f'Input file {filepath} does not exist')
+
 
 def main():
     # Get commandline arguments and initialise
@@ -114,8 +115,8 @@ def main():
     # Execute requested stage
     if args.command == 'mask':
         run_mask(args, tmp_dir.name)
-    elif args.command == 'align':
-        run_align(args, tmp_dir.name)
+    elif args.command == 'count':
+        run_count(args, tmp_dir.name)
 
 
 def run_mask(args, dh):
@@ -127,13 +128,14 @@ def run_mask(args, dh):
     else:
         assert args.read_type == 'long'
         bam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh, args.threads)
-    scores = get_base_scores_from_mpileup(args.assembly_fp, bam_fp)
+    scores, total_size = get_base_scores_from_mpileup(args.assembly_fp, bam_fp)
     min_score_threshold = get_score_threshold(scores, args.exclude)
-    write_mask_file(scores, min_score_threshold, args.assembly_fp)
+    logging.debug(f'Minimum score threshold set to {min_score_threshold}')
+    write_mask_file(scores, min_score_threshold, args.assembly_fp, total_size)
 
 
-def run_align(args, dh):
-    check_input_align_files(args)
+def run_count(args, dh):
+    check_input_count_files(args)
     counts = {}
     for i in range(len(args.assembly_fps)):
         assembly_1 = args.assembly_fps[i]
@@ -294,7 +296,7 @@ def check_input_mask_files(args):
     return list(read_filetypes)[0]
 
 
-def check_input_align_files(args):
+def check_input_count_files(args):
     for assembly_fp in args.assembly_fps:
         if get_sequence_filetype(assembly_fp) != 'FASTA':
             logging.critical(f'Following file is not valid fasta: {assembly_fp}')
@@ -379,12 +381,14 @@ def get_base_scores_from_mpileup_output(mpileup_output):
     position match the assembly's base(s), so higher is better.
     """
     scores = {}  # key = contig name, value = list of scores
+    total_size = 0
     ad_regex = re.compile(r';AD=([\d,]+);')
 
     for line in mpileup_output.splitlines():
         if line.startswith('##contig='):
             contig_name = re.search(r'<ID=([^, ]+)', line).group(1)
             contig_length = int(re.search(r'length=(\d+)', line).group(1))
+            total_size += contig_length
             logging.debug(f'contig {contig_name}: {contig_length} bp')
             scores[contig_name] = [None] * contig_length
         elif line.startswith('#'):
@@ -416,7 +420,7 @@ def get_base_scores_from_mpileup_output(mpileup_output):
     # TODO: maybe 'blur' the scores a bit, so we end up masking not just individual bad bases but
     # rather regions around bad bases?
 
-    return scores
+    return scores, total_size
 
 
 def get_score_threshold(scores, percentile):
@@ -437,17 +441,20 @@ def get_score_threshold(scores, percentile):
     return sorted_scores[rank - 1]
 
 
-def write_mask_file(scores, min_score_threshold, assembly_fp):
+def write_mask_file(scores, min_score_threshold, assembly_fp, total_size):
     mask_fp = f'{assembly_fp}.mask'
+    total_masked_bases = 0
     with open(mask_fp, 'wt') as mask:
         mask.write('\t'.join(('contig_name', 'contig_scores')))
         mask.write('\n')
         for contig_name, contig_scores in scores.items():
             mask.write(contig_name)
             mask.write('\t')
-            mask.write(','.join((str(i) for i, s in enumerate(contig_scores)
-                                 if s < min_score_threshold)))
+            masked_bases = [i for i, s in enumerate(contig_scores) if s < min_score_threshold]
+            total_masked_bases += len(masked_bases)
+            mask.write(','.join((str(x) for x in masked_bases)))
             mask.write('\n')
+    logging.info(f'Masked {total_masked_bases:,d} out of {total_size:,d} bases in {assembly_fp}')
 
 
 def load_mask_file(mask_fp):
@@ -490,7 +497,7 @@ def get_snps_from_nucmer(assembly_1, assembly_2, prefix):
     return [Snp(x) for x in show_snps_output.splitlines()]
 
 
-def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, dh):
+def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, temp_dir):
     snps_1_vs_2 = get_snps_from_nucmer(assembly_1, assembly_2, pathlib.Path(temp_dir, 'out1'))
     snps_2_vs_1 = get_snps_from_nucmer(assembly_2, assembly_1, pathlib.Path(temp_dir, 'out2'))
 
