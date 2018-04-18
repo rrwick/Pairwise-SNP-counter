@@ -14,8 +14,9 @@ __IMPORTANT: This tool is in active development and not yet ready for general us
 * [Introduction](#introduction)
 * [Requirements](#requirements)
 * [Installation](#installation)
-* [Example usage](#example-usage)
-* [Full usage](#full-usage)
+* [For the impatient](#for-the-impatient)
+* [Usage and examples](#usage-and-examples)
+* [Full command line help](#full-command-line-help)
 * [FAQ](#faq)
 * [License](#license)
 
@@ -23,9 +24,9 @@ __IMPORTANT: This tool is in active development and not yet ready for general us
 
 ## Introduction
 
-The naive way to count SNPs between two assemblies would be to align them to each other and count the differences. This would work great on flawless assemblies, but real assemblies usually have errors that can result in false positive SNPs. For example, imagine two identical 5 Mbp bacterial genomes, separately sequenced and assembled. If the assemblies have an average quality of Q50 (99.999% accurate), there may be 50 errors in each. Naively counting the SNPs could then give us a value near 100, not the 0 we should get for identical genomes. One can see that for very similar genomes (e.g. 10s of genuine SNPs), the false postives caused by assembly errors can be a serious problem. It is even more problematic for Nanopore-only assemblies which may have a average quality of Q30 (99.9% accurate), where the false positives can number in the thousands.
+The naive way to count SNPs between two assemblies would be to align them to each other and count the differences. This works with flawless assemblies, but real assemblies usually have errors that result in false positive SNPs. For example, imagine two identical 5 Mbp bacterial genomes, separately sequenced and assembled. If the assemblies have an average quality of Q50 (99.999% accurate), there may be 50 errors in each. Simply counting the differences could then give us a SNP count near 100, not the zero we expect for identical genomes. One can see that for very similar genomes (e.g. 10s of genuine SNPs), false postives caused by assembly errors can be a serious problem. It is even more problematic for Nanopore-only assemblies which may have a average quality of Q30 (99.9% accurate), where false positives can number in the thousands.
 
-To avoid this problem, this tool masks out unreliable parts of genome assemblies, so it can count SNPs only in the reliable regions. It does this in two ways: 1) examining base-level confidence by mapping sequencing reads back to their own assembly, and 2) excluding repeat regions which are difficult to assemble correctly, especially using short reads. This means that even in draft assemblies and noisy assemblies, small numbers of SNP differences can be reliably counted.
+To avoid this problem, Snouter masks out unreliable parts of assemblies so it can count SNPs only in reliable regions. It does this in two ways: 1) examining base-level confidence by mapping sequencing reads back to their own assembly, and 2) excluding repeat regions which are difficult to assemble correctly (especially using short reads). This means that even in draft assemblies and noisy long read assemblies, small numbers of SNP differences can be reliably counted.
 
 
 
@@ -34,7 +35,7 @@ To avoid this problem, this tool masks out unreliable parts of genome assemblies
 ### Input data
 
 * Two or more assemblies in FASTA format
-* For each assembly, reads in FASTQ format - _the same reads used to make the assembly_
+* For each assembly, reads in FASTA/FASTQ format - _the same reads used to make the assembly_
 
 ### Software
 
@@ -53,17 +54,76 @@ Snouter requires some tools to be installed and available on the command line. I
 
 
 
-## Example usage
+## For the impatient
 
-Snouter is run into two stages:
-1) Creating a mask file for each assembly.
-    * This step is relatively slow, as it involves aligning reads and assessing each base in the assemblies. However, it only needs to be run once per assembly (_O_(n) complexity).
-2) Conducting pairwise assembly alignment to get SNPs.
-    * This step is much faster, but it is done on every pair of assemblies (_O_(n<sup>2</sup>) complexity) so may be the slow if you have a large number of assemblies to compare.
+```
+snouter mask --assembly_fp sample_1_assembly.fasta --read_fps sample_1_reads_1.fastq.gz sample_1_reads_2.fastq.gz --read_type illumina
+snouter mask --assembly_fp sample_2_assembly.fasta --read_fps sample_2_reads_1.fastq.gz sample_2_reads_2.fastq.gz --read_type illumina
+snouter mask --assembly_fp sample_3_assembly.fasta --read_fps sample_3_reads_1.fastq.gz sample_3_reads_2.fastq.gz --read_type illumina
+snouter count --assembly_fps sample_1_assembly.fasta sample_2_assembly.fasta sample_3_assembly.fasta
+```
+
+
+## Usage and examples
+
+### Snouter mask
+
+The first stage in Snouter, `snouter mask`, creates a mask file for each assembly: a file indicating which bases are not trustworthy. This step is relatively slow, as it involves aligning reads and assessing each base in the assemblies. However, it only needs to be run once per assembly (_O_(n) complexity).
+
+Examples:
+* Masking a paired-read Illumina assembly:<br>
+`snouter mask --assembly_fp assembly.fasta --read_fps reads_1.fastq.gz reads_2.fastq.gz --read_type illumina`
+* Masking a long read assembly:<br>
+`snouter mask --assembly_fp assembly.fasta --read_fps nanopore_reads.fastq.gz --read_type long`
 
 
 
-## Full usage
+### Snouter count
+
+The second stage is `snouter count`, which conducts pairwise assembly alignment to get SNP counts. This step is much faster, but it is done on every pair of assemblies (_O_(n<sup>2</sup>) complexity) so may be the slow if you have a large number of assemblies to compare.
+
+Examples:
+* example_1
+* example_2
+* example_3
+* example_4
+
+
+## Full command line help
+
+### Snouter mask
+
+```
+usage: snouter mask [-h] --assembly_fp ASSEMBLY_FP --read_fps READ_FPS
+                    [READ_FPS ...] --read_type {illumina,long}
+                    [--threads THREADS] [--exclude EXCLUDE]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --assembly_fp ASSEMBLY_FP
+                        Input assembly filepath
+  --read_fps READ_FPS [READ_FPS ...]
+                        Input read filepaths, space separated
+  --read_type {illumina,long}
+                        Read type of input reads. [choices: illumina, long]
+  --threads THREADS     Number of threads
+  --exclude EXCLUDE     Percentage of assembly bases to exclude
+```
+
+
+### Snouter count
+
+```
+usage: snouter count [-h] --assembly_fps ASSEMBLY_FPS [ASSEMBLY_FPS ...]
+                     [--mask_fps MASK_FPS [MASK_FPS ...]]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --assembly_fps ASSEMBLY_FPS [ASSEMBLY_FPS ...]
+                        Input assembly filepaths, space separated
+  --mask_fps MASK_FPS [MASK_FPS ...]
+                        Input masking filepaths, space separated
+```
 
 
 
