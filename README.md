@@ -1,9 +1,10 @@
-# Snouter
-[![Build Status](https://travis-ci.org/rrwick/Snouter.svg?branch=master)](https://travis-ci.org/rrwick/Snouter) [![License GPL v3](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.en.html) [![Coverage Status](https://coveralls.io/repos/github/rrwick/Snouter/badge.svg?branch=master)](https://coveralls.io/github/rrwick/Snouter?branch=master)
-
-__IMPORTANT NOTE: This tool is in active development and not yet ready for general use. Check back soon!__
+<p align="center"><img src="logo.png" alt="Snouter" width="500"></p>
 
 Snouter is a tool to count the number of single nucleotide differences (a.k.a. SNPs) between very similar bacterial genome assemblies. It works with many types of assemblies: fragmented draft assemblies from Illumina reads, long read assemblies with a higher error rate, and completed assemblies.
+
+__IMPORTANT: This tool is in active development and not yet ready for general use. Check back soon!__
+
+[![Build Status](https://travis-ci.org/rrwick/Snouter.svg?branch=master)](https://travis-ci.org/rrwick/Snouter) [![License GPL v3](https://img.shields.io/badge/license-GPL%20v3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0.en.html) [![Coverage Status](https://coveralls.io/repos/github/rrwick/Snouter/badge.svg?branch=master)](https://coveralls.io/github/rrwick/Snouter?branch=master)
 
 
 
