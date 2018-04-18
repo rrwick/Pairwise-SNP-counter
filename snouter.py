@@ -432,7 +432,11 @@ def get_base_scores_from_mpileup_output(mpileup_output):
             length = len(parts[3])
             allele_depths = [int(x) for x in ad_regex.search(line).group(1).split(',')]
             ref_depth = allele_depths[0]
-            ref_frac = ref_depth / sum(allele_depths)
+            total_depth = sum(allele_depths)
+            if total_depth == 0:
+                ref_frac = 0.0
+            else:
+                ref_frac = ref_depth / total_depth
 
             # If this VCF line covers multiples bases (is the case for indels), the score applies
             # to each base in the range. When multiple VCF lines cover the same base (e.g. an indel
