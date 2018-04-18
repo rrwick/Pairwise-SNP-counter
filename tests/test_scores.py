@@ -73,7 +73,9 @@ class TestMpileupOutputParsing(unittest.TestCase):
         mpileup_output_filename = pathlib.Path(__file__).parent / 'mpileup_output_1'
         with open(mpileup_output_filename, 'rt') as mpileup_output_file:
             mpileup_output = mpileup_output_file.read()
-        scores = snouter.get_base_scores_from_mpileup_output(mpileup_output)
+        scores, total_size = snouter.get_base_scores_from_mpileup_output(mpileup_output)
+
+        self.assertEqual(total_size, 250)
 
         # Test some individual bases.
         self.assertAlmostEqual(scores['chromosome'][0], 6 / 14)
@@ -98,7 +100,9 @@ class TestMpileupOutputParsing(unittest.TestCase):
         mpileup_output_filename = pathlib.Path(__file__).parent / 'mpileup_output_2'
         with open(mpileup_output_filename, 'rt') as mpileup_output_file:
             mpileup_output = mpileup_output_file.read()
-        scores = snouter.get_base_scores_from_mpileup_output(mpileup_output)
+        scores, total_size = snouter.get_base_scores_from_mpileup_output(mpileup_output)
+
+        self.assertEqual(total_size, 250)
 
         # This base is (unusually for a Nanopore assembly) not covered by an indel.
         self.assertAlmostEqual(scores['chromosome'][29], 50 / 57)

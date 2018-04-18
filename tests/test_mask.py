@@ -29,7 +29,7 @@ class TestMaskFiles(unittest.TestCase):
             self.mask_fp.unlink()
 
     def test_mask_file_1(self):
-        snouter.write_mask_file(self.scores, 0.15, self.assembly_fp)
+        snouter.write_mask_file(self.scores, 0.15, self.assembly_fp, 10)
         target_mask = {'contig_1': [0, 1, 5], 'contig_2': [2, 3]}
         self.assertEqual(snouter.load_mask_file(self.mask_fp), target_mask)
 
@@ -38,16 +38,16 @@ class TestMaskFiles(unittest.TestCase):
         A threshold of 0.1 should not mask scores of 0.1 - scores must be lower than the threshold
         to be masked.
         """
-        snouter.write_mask_file(self.scores, 0.1, self.assembly_fp)
+        snouter.write_mask_file(self.scores, 0.1, self.assembly_fp, 10)
         target_mask = {'contig_1': [5], 'contig_2': [2]}
         self.assertEqual(snouter.load_mask_file(self.mask_fp), target_mask)
 
     def test_mask_file_3(self):
-        snouter.write_mask_file(self.scores, 0.0, self.assembly_fp)
+        snouter.write_mask_file(self.scores, 0.0, self.assembly_fp, 10)
         target_mask = {'contig_1': [], 'contig_2': []}
         self.assertEqual(snouter.load_mask_file(self.mask_fp), target_mask)
 
     def test_mask_file_4(self):
-        snouter.write_mask_file(self.scores, 1.0, self.assembly_fp)
+        snouter.write_mask_file(self.scores, 1.0, self.assembly_fp, 10)
         target_mask = {'contig_1': [0, 1, 2, 3, 4, 5], 'contig_2': [0, 1, 2, 3, 4, 5]}
         self.assertEqual(snouter.load_mask_file(self.mask_fp), target_mask)
