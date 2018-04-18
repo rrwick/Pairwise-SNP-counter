@@ -49,10 +49,10 @@ def get_arguments():
                              help='Percentage of assembly bases to exclude')
 
     parser_align = subparser.add_parser('align')
-    parser_align.add_argument('--assembly_fp', required=True, type=pathlib.Path,
-                              help='Input assembly filepath, space separated')
-    parser_align.add_argument('--mask_fp', type=pathlib.Path,
-                              help='Input masking filepath, space separated')
+    parser_align.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
+                              help='Input assembly filepaths, space separated')
+    parser_align.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
+                              help='Input masking filepaths, space separated')
 
     args = parser.parse_args()
     if not args.command:
@@ -63,9 +63,6 @@ def get_arguments():
 
     # TODO: Perform additional argument parsing, checking
     check_parsed_file_exists(args.assembly_fp, parser)
-    if args.command == 'align':
-        check_parsed_file_exists(args.mask_fp, parser)
-
     if args.command == 'mask':
         for read_fp in args.read_fps:
             check_parsed_file_exists(read_fp, parser)
@@ -76,6 +73,15 @@ def get_arguments():
         elif args.read_type == 'long':
             if len(args.read_fps) > 1:
                 parser.error('--read_fps takes only a single long read set')
+
+    if args.command == 'align':
+        if len(args.assembly_fps) < 2:
+            parser.error('Two or more assemblies are required, got {len(args.assembly_fps}')
+        if not args.mask_fps:
+            args.mask_fps = [f'{fp}.mask' for fp in args.assembly_fps]
+        if len(args.assembly_fps) != len(args.mask_fps):
+            parser.error('Need the same number of masks as assemblies')
+        check_parsed_file_exists(args.mask_fp, parser)
 
     return args
 
@@ -115,20 +121,17 @@ def run_mask(args):
 
 
 def run_align(args):
-    assemblies, masks = check_input_align_files(args)
+    check_input_align_files(args)
     counts = {}
-    for i in range(len(args.assemblies)):
-        assembly_1 = assemblies[i]
-        mask_1 = load_mask_file(masks[i])
+    for i in range(len(args.assembly_fps)):
+        assembly_1 = args.assembly_fps[i]
+        mask_1 = load_mask_file(args.mask_fps[i])
         for j in range(i+1, len(args.assemblies)):
-            assembly_2 = assemblies[j]
-            mask_2 = load_mask_file(masks[j])
+            assembly_2 = args.assembly_fps[j]
+            mask_2 = load_mask_file(args.mask_fps[j])
             snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2)
             counts[(assembly_1, assembly_2)] = snp_count
             counts[(assembly_2, assembly_1)] = snp_count
-
-
-log_format = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
 
 
 def initialise_logging():
@@ -136,6 +139,7 @@ def initialise_logging():
     # Set up loggers
     log_filehandler = logging.FileHandler('run.log', mode='w')
     log_streamhandler = logging.StreamHandler()
+    log_format = logging.Formatter(fmt='%(asctime)s %(message)s', datefmt='%d/%m/%Y %H:%M:%S')
     log_filehandler.setFormatter(log_format)
     log_streamhandler.setFormatter(log_format)
 
@@ -151,11 +155,12 @@ def initialise_logging():
 
 
 def log_newline():
+    logging_formatter = logging.getLogger('').handlers[0].formatter
     for h in logging.getLogger('').handlers:
         h.setFormatter(logging.Formatter(fmt=''))
     logging.info('')
     for h in logging.getLogger('').handlers:
-        h.setFormatter(log_format)
+        h.formatter = logging_formatter
 
 
 def check_dependencies():
@@ -254,21 +259,15 @@ def check_input_mask_files(args):
 
 
 def check_input_align_files(args):
-    assemblies = args.assembly_fp.split()
-    if len(assemblies) <= 1:
-        logging.critical('At least two assemblies are required')
-        sys.exit(1)
-    if args.mask_fp is None:
-        masks = [x + '.mask' for x in assemblies]
-    else:
-        masks = args.mask_fp.split()
-        if len(assemblies) != len(masks):
-            logging.critical('Number of masks does not equal number of assemblies')
+    for assembly_fp in args.assembly_fps:
+        if get_sequence_filetype(assembly_fp) != 'FASTA':
+            logging.critical(f'Following file is not valid fasta: {assembly_fp}')
             sys.exit(1)
-
-    # TODO: check that files look like our mask format and FASTA
-
-    return assemblies, masks
+    for mask_fp in args.mask_fps:
+        with mask_fp.open('r') as fh:
+            if fh.readline().rstrip().split() != ['contig_name', 'contig_scores']:
+                logging.critical(f'The file {mask_fp} does not not look like a mask file')
+                sys.exit(1)
 
 
 def execute_command(command, check=True):
@@ -401,6 +400,8 @@ def get_score_threshold(scores, percentile):
 def write_mask_file(scores, min_score_threshold, assembly_fp):
     mask_fp = f'{assembly_fp}.mask'
     with open(mask_fp, 'wt') as mask:
+        mask.write('\t'.join(('contig_name', 'contig_scores')))
+        mask.write('\n')
         for contig_name, contig_scores in scores.items():
             mask.write(contig_name)
             mask.write('\t')
@@ -412,6 +413,8 @@ def write_mask_file(scores, min_score_threshold, assembly_fp):
 def load_mask_file(mask_fp):
     masked_positions = {}
     with open(mask_fp, 'rt') as mask:
+        # Skip header
+        mask.readline()
         for line in mask:
             parts = line.rstrip('\n').split('\t')
             contig_name = parts[0]
