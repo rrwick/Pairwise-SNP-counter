@@ -66,8 +66,8 @@ def get_arguments():
         parser.error('command options include mask or count')
 
     # TODO: Perform additional argument parsing, checking
-    check_parsed_file_exists(args.assembly_fp, parser)
     if args.command == 'mask':
+        check_parsed_file_exists(args.assembly_fp, parser)
         for read_fp in args.read_fps:
             check_parsed_file_exists(read_fp, parser)
 
@@ -81,11 +81,14 @@ def get_arguments():
     if args.command == 'count':
         if len(args.assembly_fps) < 2:
             parser.error('Two or more assemblies are required, got {len(args.assembly_fps}')
+        for assembly_fp in args.assembly_fps:
+            check_parsed_file_exists(assembly_fp, parser)
         if not args.mask_fps:
-            args.mask_fps = [f'{fp}.mask' for fp in args.assembly_fps]
+            args.mask_fps = [pathlib.Path(f'{fp}.mask') for fp in args.assembly_fps]
         if len(args.assembly_fps) != len(args.mask_fps):
             parser.error('Need the same number of masks as assemblies')
-        check_parsed_file_exists(args.mask_fp, parser)
+        for mask_fp in args.mask_fps:
+            check_parsed_file_exists(mask_fp, parser)
 
     return args
 
@@ -140,7 +143,7 @@ def run_count(args, dh):
     for i in range(len(args.assembly_fps)):
         assembly_1 = args.assembly_fps[i]
         mask_1 = load_mask_file(args.mask_fps[i])
-        for j in range(i+1, len(args.assemblies)):
+        for j in range(i+1, len(args.assembly_fps)):
             assembly_2 = args.assembly_fps[j]
             mask_2 = load_mask_file(args.mask_fps[j])
             snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, dh)
@@ -466,9 +469,9 @@ def load_mask_file(mask_fp):
             parts = line.rstrip('\n').split('\t')
             contig_name = parts[0]
             if parts[1]:
-                positions = [int(x) for x in parts[1].split(',')]
+                positions = set(int(x) for x in parts[1].split(','))
             else:
-                positions = []
+                positions = set()
             masked_positions[contig_name] = positions
     return masked_positions
 
@@ -480,28 +483,68 @@ def default_thread_count():
 class Snp(object):
     def __init__(self, show_snps_line):
         parts = show_snps_line.strip().split('\t')
-        self.assembly_1_pos = int(parts[0])
-        self.assembly_1_base = parts[1]
-        self.assembly_2_base = parts[2]
-        self.assembly_2_pos = int(parts[3])
-        self.assembly_1_strand = int(parts[6])
-        self.assembly_2_strand = int(parts[7])
+        self.a1_pos = int(parts[0])
+        self.a1_base = parts[1]
+        self.a2_base = parts[2]
+        assert len(self.a1_base) == 1
+        assert len(self.a2_base) == 1
+        self.a2_pos = int(parts[3])
+        self.a1_strand = int(parts[6])
+        self.a2_strand = int(parts[7])
         self.dist_to_contig_end = int(parts[5])
-        self.assembly_1_contig_name = parts[8]
-        self.assembly_2_contig_name = parts[9]
+        self.a1_contig = parts[8]
+        self.a2_contig = parts[9]
+
+    def __str__(self):
+        a1_strand = '+' if self.a1_strand == 1 else '-'
+        a2_strand = '+' if self.a2_strand == 1 else '-'
+        return f'{self.a1_contig}{a1_strand}:{self.a1_pos}, ' \
+               f'{self.a2_contig}{a2_strand}:{self.a2_pos}: ' \
+               f'{self.a1_base} -> {self.a2_base}'
+
+    def data_tuple(self):
+        assert self.a1_strand == 1
+        return (self.a1_contig, self.a1_pos, self.a1_strand,
+                self.a2_contig, self.a2_pos, self.a2_strand,
+                self.a1_base, self.a2_base)
+
+    def __lt__(self, other):
+        return self.data_tuple() < other.data_tuple()
+
+    def __eq__(self, other):
+        return self.data_tuple() == other.data_tuple()
+
+    def __hash__(self):
+        return hash(self.data_tuple())
 
 
-def get_snps_from_nucmer(assembly_1, assembly_2, prefix):
+def get_snp_count_from_nucmer(assembly_1, mask_1, assembly_2, mask_2, prefix):
+    log_newline()
+    logging.info(f'Aligning {assembly_1} and {assembly_2} using numcer')
     execute_command(f'nucmer --prefix={prefix} {assembly_1} {assembly_2}')
-    show_snps_output = execute_command('show-snps -CrTH {prefix}.delta').stdout
-    return [Snp(x) for x in show_snps_output.splitlines()]
+    show_snps_output = execute_command(f'show-snps -CrTH {prefix}.delta').stdout
+    snps = sorted(Snp(x) for x in show_snps_output.splitlines())
+    before_mask_count = len(snps)
+    snps = [x for x in snps
+            if x.a1_pos not in mask_1[x.a1_contig] and x.a2_pos not in mask_2[x.a2_contig]]
+    for snp in snps:
+        logging.debug(str(snp))
+    after_mask_count = len(snps)
+    mask_diff = before_mask_count - after_mask_count
+    logging.info(f'Found {before_mask_count:,d} SNPs, {mask_diff:,d} of which were masked out '
+                 f'leaving {after_mask_count:,d} SNPs')
+    return after_mask_count
 
 
 def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, temp_dir):
-    snps_1_vs_2 = get_snps_from_nucmer(assembly_1, assembly_2, pathlib.Path(temp_dir, 'out1'))
-    snps_2_vs_1 = get_snps_from_nucmer(assembly_2, assembly_1, pathlib.Path(temp_dir, 'out2'))
-
-    return 0  # TEMP
+    snps_1_vs_2 = get_snp_count_from_nucmer(assembly_1, mask_1, assembly_2, mask_2,
+                                            pathlib.Path(temp_dir, 'out1'))
+    snps_2_vs_1 = get_snp_count_from_nucmer(assembly_2, mask_2, assembly_1, mask_1,
+                                            pathlib.Path(temp_dir, 'out2'))
+    final_count = min(snps_1_vs_2, snps_2_vs_1)
+    log_newline()
+    logging.info(f'Final SNP count between {assembly_1} and {assembly_2}: {final_count:,d}')
+    return final_count
 
 
 if __name__ == '__main__':
