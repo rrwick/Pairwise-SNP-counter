@@ -58,58 +58,20 @@ def get_arguments():
     parser.add_argument('--tmp_dir', required=False, type=pathlib.Path,
                         help='If desired, input a directory to use as temporary')
 
-    log_newline()
-    logging.debug('Parsing and checking arguments')
-
     args = parser.parse_args()
     if not args.command:
         # TODO: print better help info. see samtools for an example with subcommands
         parser.print_help()
         print('\n', end='')
         parser.error('command options include mask or count')
-
-    # TODO: Perform additional argument parsing, checking
-    if args.command == 'mask':
-        check_parsed_file_exists(args.assembly_fp, parser)
-        for read_fp in args.read_fps:
-            check_parsed_file_exists(read_fp, parser)
-
-        if args.read_type == 'illumina':
-            if len(args.read_fps) > 3:
-                parser.error('--read_fps takes no more than three illumina read sets')
-        elif args.read_type == 'long':
-            if len(args.read_fps) > 1:
-                parser.error('--read_fps takes only a single long read set')
-        if args.exclude is None:
-            args.exclude = 2.0 if args.read_type == 'illumina' else 5.0
-            logging.debug(f'--exclude set to {args.exclude} based on read type of '
-                          f'"{args.read_type}"')
-
-    if args.command == 'count':
-        if len(args.assembly_fps) < 2:
-            parser.error('Two or more assemblies are required, got {len(args.assembly_fps}')
-        for assembly_fp in args.assembly_fps:
-            check_parsed_file_exists(assembly_fp, parser)
-        if not args.mask_fps:
-            args.mask_fps = [pathlib.Path(f'{fp}.mask') for fp in args.assembly_fps]
-        if len(args.assembly_fps) != len(args.mask_fps):
-            parser.error('Need the same number of masks as assemblies')
-        for mask_fp in args.mask_fps:
-            check_parsed_file_exists(mask_fp, parser)
-
     return args
-
-
-def check_parsed_file_exists(filepath, parser):
-    # Check that the argument has been set; is not None
-    if filepath and not filepath.exists():
-        parser.error(f'Input file {filepath} does not exist')
 
 
 def main():
     # Get commandline arguments and initialise
-    initialise_logging()
     args = get_arguments()
+    initialise_logging()
+    check_arguments(args)
     check_dependencies()
 
     # Initialise temporary directory
@@ -127,6 +89,52 @@ def main():
         run_mask(args, tmp_dir.name)
     elif args.command == 'count':
         run_count(args, tmp_dir.name)
+
+
+def check_arguments(args):
+
+    log_newline()
+    logging.debug('Checking arguments')
+
+    # TODO: Perform additional argument parsing, checking
+    if args.command == 'mask':
+        check_parsed_file_exists(args.assembly_fp)
+        for read_fp in args.read_fps:
+            check_parsed_file_exists(read_fp)
+
+        if args.read_type == 'illumina':
+            if len(args.read_fps) > 3:
+                logging.critical('--read_fps takes no more than three illumina read sets')
+                sys.exit(1)
+        elif args.read_type == 'long':
+            if len(args.read_fps) > 1:
+                logging.critical('--read_fps takes only a single long read set')
+                sys.exit(1)
+        if args.exclude is None:
+            args.exclude = 2.0 if args.read_type == 'illumina' else 5.0
+            logging.debug(f'--exclude set to {args.exclude} based on read type of '
+                          f'"{args.read_type}"')
+
+    if args.command == 'count':
+        if len(args.assembly_fps) < 2:
+            logging.critical('Two or more assemblies are required, got {len(args.assembly_fps}')
+            sys.exit(1)
+        for assembly_fp in args.assembly_fps:
+            check_parsed_file_exists(assembly_fp)
+        if not args.mask_fps:
+            args.mask_fps = [pathlib.Path(f'{fp}.mask') for fp in args.assembly_fps]
+        if len(args.assembly_fps) != len(args.mask_fps):
+            logging.critical('Need the same number of masks as assemblies')
+            sys.exit(1)
+        for mask_fp in args.mask_fps:
+            check_parsed_file_exists(mask_fp)
+
+
+def check_parsed_file_exists(filepath):
+    # Check that the argument has been set; is not None
+    if filepath and not filepath.exists():
+        logging.critical(f'Input file {filepath} does not exist')
+        sys.exit(1)
 
 
 def run_mask(args, dh):
