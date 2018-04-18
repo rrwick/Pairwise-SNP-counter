@@ -28,7 +28,7 @@ import subprocess
 import tempfile
 import multiprocessing
 import sys
-from Bio import SeqIO
+import gzip
 
 
 def get_arguments():
@@ -100,12 +100,12 @@ def main():
 
 
 def run_mask(args):
-    check_input_mask_files(args)
+    read_filetype = check_input_mask_files(args)
     with tempfile.TemporaryDirectory() as dh:
         # Map reads to assembly
         if args.read_type == 'illumina':
             index_fp = index_assembly(args.assembly_fp, dh)
-            bam_fp = map_illumina_reads(index_fp, args.read_fps, dh, args.threads)
+            bam_fp = map_illumina_reads(index_fp, args.read_fps, dh, args.threads, read_filetype)
         else:
             assert args.read_type == 'long'
             bam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh, args.threads)
@@ -191,24 +191,66 @@ def check_dependencies():
             sys.exit(1)
 
 
-def is_fasta(fName,fType):
-    # Finds any valid (fasta) sequences in a file, returns true if any exist
-    with open(fName, "rU") as fh:
-        fParsed = SeqIO.parse(fh, fType)
-        try:
-            return any(fParsed)
-        except:
-            return False
+def get_sequence_filetype(filename):
+    with get_open_function(filename)(filename, 'rt') as fh:
+        for line in fh:
+            if line.startswith('>'):
+                return 'FASTA'
+            elif line.startswith('@'):
+                return 'FASTQ'
+            else:
+                logging.critical(f'Could not determine type of {filename} (must be FASTA or FASTQ')
+                sys.exit(1)
+
+
+def get_compression_type(filename):
+    """
+    Attempts to guess the compression (if any) on a file using the first few bytes.
+    http://stackoverflow.com/questions/13044562
+    """
+    magic_dict = {'gz': (b'\x1f', b'\x8b', b'\x08'),
+                  'bz2': (b'\x42', b'\x5a', b'\x68'),
+                  'zip': (b'\x50', b'\x4b', b'\x03', b'\x04')}
+    max_len = max(len(x) for x in magic_dict)
+    with open(filename, 'rb') as unknown_file:
+        file_start = unknown_file.read(max_len)
+    compression_type = 'plain'
+    for file_type, magic_bytes in magic_dict.items():
+        if file_start.startswith(magic_bytes):
+            compression_type = file_type
+    if compression_type == 'bz2':
+        logging.critical('cannot use bzip2 format - use gzip instead')
+        sys.exit(1)
+    if compression_type == 'zip':
+        logging.critical('cannot use zip format - use gzip instead')
+        sys.exit(1)
+    return compression_type
+
+
+def get_open_function(filename):
+    if get_compression_type(filename) == 'gz':
+        return gzip.open
+    else:  # plain text
+        return open
 
 
 def check_input_mask_files(args):
     log_newline()
-    logging.info('Checking read file integrity')
+    logging.info('Checking input file types')
+
+    assembly_filetype = get_sequence_filetype(args.assembly_fp)
+    logging.info(f'{args.assembly_fp} ({assembly_filetype})')
+
+    read_filetypes = set()
     for read_fp in args.read_fps:
-        if not (is_fasta(read_fp, 'fastq') or is_fasta(read_fp, 'fasta')):
-            logging.critical(f'Following file is not valid fastq or fasta: {read_fp}')
-            sys.exit(1)
-    # TODO: if Illumina reads, check they are in the right order (1, 2, unpaired)
+        read_filetype = get_sequence_filetype(read_fp)
+        logging.info(f'{read_fp} ({read_filetype})')
+        read_filetypes.add(read_filetype)
+    if args.read_type == 'illumina' and len(read_filetypes) > 1:
+        logging.critical('Read files must be all FASTQ or all FASTA (not a mixture of both)')
+        sys.exit(1)
+    assert len(read_filetypes) == 1
+    return list(read_filetypes)[0]
 
 
 def check_input_align_files(args):
@@ -251,16 +293,19 @@ def execute_command(command, check=True):
 
 
 def index_assembly(assembly_fp, temp_directory):
+    log_newline()
     logging.info(f'Building a Bowtie2 index for {assembly_fp}')
     index_fp = pathlib.Path(temp_directory, assembly_fp)
     execute_command(f'bowtie2-build {assembly_fp} {index_fp}')
     return index_fp
 
 
-def map_illumina_reads(index_fp, read_fps, temp_directory, threads):
+def map_illumina_reads(index_fp, read_fps, temp_directory, threads, read_filetype):
     logging.info(f'Aligning Illumina reads to with Bowtie2')
     bam_fp = pathlib.Path(temp_directory, f'{index_fp.stem}.bam')
     command = f'bowtie2 --threads {threads} --sensitive -X 1000 -x {index_fp} '
+    if read_filetype == 'FASTA':
+        command += '-f '
     if len(read_fps) == 1:
         command += f'-U {read_fps[0]} '
     elif len(read_fps) == 2:
