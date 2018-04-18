@@ -156,10 +156,14 @@ def initialise_logging():
 
 
 def log_newline():
+    log_no_format('')
+
+
+def log_no_format(msg):
     logging_formatter = logging.getLogger('').handlers[0].formatter
     for h in logging.getLogger('').handlers:
         h.setFormatter(logging.Formatter(fmt=''))
-    logging.info('')
+    logging.info(msg)
     for h in logging.getLogger('').handlers:
         h.formatter = logging_formatter
 
@@ -179,7 +183,10 @@ def check_dependencies():
                                  'vrequired': '2.0'},
                     'bash':     {'vcommand': 'bash --version',
                                  'vregex': re.compile(r'^.+version (.+) .+'),
-                                 'vrequired': '1.0'}}
+                                 'vrequired': '1.0'},
+                    'nucmer':   {'vcommand': 'nucmer --version 2>&1',
+                                 'vregex': re.compile(r'version (.+)'),
+                                 'vrequired': '3.0'}}
     for dependency, version_data in dependencies.items():
         if not shutil.which(dependency):
             logging.critical(f'Could not find dependency {dependency}')
@@ -195,6 +202,8 @@ def check_dependencies():
             logging.critical(f'{dependency} version {version_data["vrequired"]} or high is '
                              f'required')
             sys.exit(1)
+        else:
+            logging.debug(f'{dependency}: version {version} (good)')
 
 
 def get_sequence_filetype(filename):
