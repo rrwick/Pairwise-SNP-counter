@@ -49,10 +49,10 @@ def get_arguments():
                              help='Percentage of assembly bases to exclude')
 
     parser_align = subparser.add_parser('align')
-    parser_align.add_argument('--assembly_fp', required=True, type=pathlib.Path,
-                              help='Input assembly filepath, space separated')
-    parser_align.add_argument('--mask_fp', type=pathlib.Path,
-                              help='Input masking filepath, space separated')
+    parser_align.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
+                              help='Input assembly filepaths, space separated')
+    parser_align.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
+                              help='Input masking filepaths, space separated')
 
     args = parser.parse_args()
     if not args.command:
@@ -63,9 +63,6 @@ def get_arguments():
 
     # TODO: Perform additional argument parsing, checking
     check_parsed_file_exists(args.assembly_fp, parser)
-    if args.command == 'align':
-        check_parsed_file_exists(args.mask_fp, parser)
-
     if args.command == 'mask':
         for read_fp in args.read_fps:
             check_parsed_file_exists(read_fp, parser)
@@ -76,6 +73,17 @@ def get_arguments():
         elif args.read_type == 'long':
             if len(args.read_fps) > 1:
                 parser.error('--read_fps takes only a single long read set')
+
+    if args.command == 'align':
+        # Limiting to a single pairwise comp for now
+        if len(args.assembl_fps) != 2:
+            parser.error('Exactly two assemblies are required, got {len(args.assembly_fps}')
+
+        if not args.mask_fps:
+            args.mask_fps = ['{fp}.mask' for fp in args.assembly_fps]
+        elif len(args.mask_fps) != 2:
+                parse.error('Exactly two mask files must be specified, got {len(args.mask_fps)}')
+        check_parsed_file_exists(args.mask_fp, parser)
 
     return args
 
@@ -190,8 +198,11 @@ def check_dependencies():
             sys.exit(1)
 
 
-def is_fasta(fName,fType):
-    # Finds any valid (fasta) sequences in a file, returns true if any exist
+def is_seq_type(fName, fType):
+    # Finds any valid (fasta/fastq) sequences in a file, returns true if any exist
+    if fType not in {'fasta', 'fastq'}:
+        logging.error('Failed to validate {fName}, unknown filetype specified ({fType})')
+        sys.exit(1)
     with open(fName, "rU") as fh:
         fParsed = SeqIO.parse(fh, fType)
         try:
@@ -204,28 +215,22 @@ def check_input_mask_files(args):
     log_newline()
     logging.info('Checking read file integrity')
     for read_fp in args.read_fps:
-        if not (is_fasta(read_fp, 'fastq') or is_fasta(read_fp, 'fasta')):
-            logging.critical(f'Following file is not valid fastq or fasta: {read_fp}')
+        if not is_seq_type(read_fp, 'fastq'):
+            logging.critical(f'Following file is not valid fastq: {read_fp}')
             sys.exit(1)
     # TODO: if Illumina reads, check they are in the right order (1, 2, unpaired)
 
 
 def check_input_align_files(args):
-    assemblies = args.assembly_fp.split()
-    if len(assemblies) <= 1:
-        logging.critical('At least two assemblies are required')
-        sys.exit(1)
-    if args.mask_fp is None:
-        masks = [x + '.mask' for x in assemblies]
-    else:
-        masks = args.mask_fp.split()
-        if len(assemblies) != len(masks):
-            logging.critical('Number of masks does not equal number of assemblies')
+    for assembly_fp in args.assembly_fps:
+        if not is_seq_type(assembly_fp, 'fasta'):
+            logging.critical(f'Following file is not valid fasta: {assembly_fp}')
             sys.exit(1)
-
-    # TODO: check that files look like our mask format and FASTA
-
-    return assemblies, masks
+    for mask_fp in args.mask_fps:
+        with mask_fp.open('r') as fh:
+            if fh.readline().rstrip().split() != ['contig_name', 'contig_scores']:
+                logging.critical(f'The file {mask_fp} does not not look like a mask file')
+                sys.exit(1)
 
 
 def execute_command(command, check=True):
