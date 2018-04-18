@@ -46,7 +46,7 @@ def get_arguments():
                              help='Read type of input reads. [choices: illumina, long]')
     parser_mask.add_argument('--threads', required=False, type=int, default=default_thread_count(),
                              help='Number of threads')
-    parser_mask.add_argument('--exclude', required=False, type=float, default=2.0,
+    parser_mask.add_argument('--exclude', required=False, type=float,
                              help='Percentage of assembly bases to exclude')
 
     parser_count = subparser.add_parser('count')
@@ -57,6 +57,9 @@ def get_arguments():
 
     parser.add_argument('--tmp_dir', required=False, type=pathlib.Path,
                         help='If desired, input a directory to use as temporary')
+
+    log_newline()
+    logging.debug('Parsing and checking arguments')
 
     args = parser.parse_args()
     if not args.command:
@@ -77,6 +80,10 @@ def get_arguments():
         elif args.read_type == 'long':
             if len(args.read_fps) > 1:
                 parser.error('--read_fps takes only a single long read set')
+        if args.exclude is None:
+            args.exclude = 2.0 if args.read_type == 'illumina' else 5.0
+            logging.debug(f'--exclude set to {args.exclude} based on read type of '
+                          f'"{args.read_type}"')
 
     if args.command == 'count':
         if len(args.assembly_fps) < 2:
@@ -101,8 +108,8 @@ def check_parsed_file_exists(filepath, parser):
 
 def main():
     # Get commandline arguments and initialise
-    args = get_arguments()
     initialise_logging()
+    args = get_arguments()
     check_dependencies()
 
     # Initialise temporary directory
