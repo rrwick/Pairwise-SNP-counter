@@ -19,16 +19,16 @@ have received a copy of the GNU General Public License along with this program. 
 
 import argparse
 from distutils.version import LooseVersion
+import gzip
 import logging
 import math
+import multiprocessing
 import pathlib
 import re
 import shutil
 import subprocess
-import tempfile
-import multiprocessing
 import sys
-import gzip
+import tempfile
 
 
 def get_arguments():
