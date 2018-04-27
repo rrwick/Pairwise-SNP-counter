@@ -169,6 +169,7 @@ def run_count(args, dh):
 
 
 class ColourFormatter(logging.Formatter):
+    # TODO: check to see if the terminal supports colours. If not, don't use them!
     def format(self, record):
         s = super().format(record)
         if record.levelname == 'DEBUG':
@@ -369,7 +370,8 @@ def index_assembly(assembly_fp, temp_directory):
 
 
 def map_illumina_reads(index_fp, read_fps, temp_directory, threads, read_filetype):
-    logging.info(f'Aligning Illumina reads to with Bowtie2')
+    log_newline()
+    logging.info(f'Aligning Illumina reads to {index_fp.name} with Bowtie2')
     bam_fp = pathlib.Path(temp_directory, f'{index_fp.stem}.bam')
     command = f'bowtie2 --threads {threads} --sensitive -X 1000 -x {index_fp} '
     if read_filetype == 'FASTA':
