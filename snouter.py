@@ -32,41 +32,73 @@ import tempfile
 
 
 def get_arguments():
-    parser = argparse.ArgumentParser()
-
+    parser = argparse.ArgumentParser(add_help=False)
     subparser = parser.add_subparsers(metavar='mask count', dest='command')
+
+    parser.add_argument('-v', '--version', action='store_true', help='Display version info')
+    parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
 
     parser_mask = subparser.add_parser('mask')
     parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
-                             help='Input assembly filepath')
+                             help='input assembly filepath')
     # TODO: --read_fps help info stating expected read order
     parser_mask.add_argument('--read_fps', required=True, nargs='+', type=pathlib.Path,
-                             help='Input read filepaths, space separated')
+                             help='input read filepaths, space separated')
     parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
-                             help='Read type of input reads. [choices: illumina, long]')
+                             help='read type of input reads. [choices: illumina, long]')
     parser_mask.add_argument('--threads', required=False, type=int, default=default_thread_count(),
-                             help='Number of threads')
+                             help='number of threads')
     parser_mask.add_argument('--exclude', required=False, type=float,
-                             help='Percentage of assembly bases to exclude')
+                             help='percentage of assembly bases to exclude')
+    parser_mask.add_argument('--tmp_dir', required=False, type=pathlib.Path,
+                        help='if desired, input a directory to use as temporary')
 
     parser_count = subparser.add_parser('count')
     parser_count.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
-                              help='Input assembly filepaths, space separated')
+                              help='input assembly filepaths, space separated')
     parser_count.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
-                              help='Input masking filepaths, space separated')
+                              help='input masking filepaths, space separated')
+    parser_count.add_argument('--temp_dir', required=False, type=pathlib.Path,
+                        help='if desired, input a directory to use as temporary')
+
     # TODO: option for output format: simple counts (one pairwise count per line), count matrix or
     #       PHYLIP distance matrix (for tree-building).
 
-    parser.add_argument('--tmp_dir', required=False, type=pathlib.Path,
-                        help='If desired, input a directory to use as temporary')
-
     args = parser.parse_args()
+    if args.version:
+        print_version()
+        sys.exit(0)
+    if args.help:
+        print_program_info()
+        print_usage()
+        sys.exit(0)
     if not args.command:
-        # TODO: print better help info. see samtools for an example with subcommands
-        parser.print_help()
-        print('\n', end='')
-        parser.error('command options include mask or count')
+        print_program_info()
+        print_usage()
+        print('\nerror: no stage specified (choose from \'mask\', \'count\')')
+        sys.exit(1)
     return args
+
+
+def print_program_info():
+    print('Program: Snouter')
+    print('Version: ', end='')
+    print_version()
+    print('Authors: Ryan Wick (rrwick@gmail.com), Stephen Watts, Alex Tokolyi')
+
+
+def print_version():
+    print('0.0.1')
+
+
+def print_usage():
+    print('\nUsage: snouter.py <command> [options]')
+    print('\nCommands:')
+    print('    mask            create a mask file for an assembly')
+    print('    count           perform pairwise alignment and calculate SNPs')
+    print('\nMisc:')
+    print('    -h, --help      show this help message and exit')
+    print('    -v, --version   show version info and exit')
 
 
 def main():
