@@ -54,8 +54,11 @@ def get_arguments():
                               help='Input assembly filepaths, space separated')
     parser_count.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
                               help='Input masking filepaths, space separated')
-    # TODO: option for output format: simple counts (one pairwise count per line), count matrix or
-    #       PHYLIP distance matrix (for tree-building).
+    parser_count.add_argument('--out_fp', required=True, type=pathlib.Path,
+                              help='Output filepath')
+    parser_count.add_argument('--out_format', required=True,
+                              choices=['table', 'snp_matrix', 'phylip_distances'],
+                              help='Output format')
 
     parser.add_argument('--tmp_dir', required=False, type=pathlib.Path,
                         help='If desired, input a directory to use as temporary')
@@ -124,6 +127,7 @@ def check_arguments(args):
             check_parsed_file_exists(assembly_fp)
         if not args.mask_fps:
             args.mask_fps = [pathlib.Path(f'{fp}.mask') for fp in args.assembly_fps]
+            logging.debug('Mask files not specified, using assembly filenames plus ".mask"')
         if len(args.assembly_fps) != len(args.mask_fps):
             logging.critical('Need the same number of masks as assemblies')
             sys.exit(1)
@@ -158,6 +162,7 @@ def run_count(args, dh):
     counts = {}
     for i in range(len(args.assembly_fps)):
         assembly_1 = args.assembly_fps[i]
+        counts[(assembly_1, assembly_1)] = 0
         mask_1 = load_mask_file(args.mask_fps[i])
         for j in range(i+1, len(args.assembly_fps)):
             assembly_2 = args.assembly_fps[j]
@@ -165,7 +170,62 @@ def run_count(args, dh):
             snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, dh)
             counts[(assembly_1, assembly_2)] = snp_count
             counts[(assembly_2, assembly_1)] = snp_count
-    # TODO: save results to file, in user's preferred format
+
+    out_format_name = {'table': 'table', 'snp_matrix': 'SNP matrix',
+                       'phylip_distances': 'PHYLIP distance matrix'}[args.out_format]
+    log_newline()
+    logging.info(f'Writing {out_format_name} to {args.out_fp}')
+    if args.out_format == 'table':
+        output_table(args, counts)
+    elif args.out_format == 'snp_matrix':
+        output_snp_matrix(args, counts)
+    elif args.out_format == 'phylip_distances':
+        output_phylip_distances(args, counts)
+
+
+def output_table(args, counts):
+    with open(args.out_fp, 'wt') as out:
+        out.write('Assembly_1\tAssembly_2\tSNP_count\n')
+        for i in range(len(args.assembly_fps)):
+            assembly_1 = args.assembly_fps[i]
+            for j in range(i + 1, len(args.assembly_fps)):
+                assembly_2 = args.assembly_fps[j]
+                snp_count = counts[(assembly_1, assembly_2)]
+                out.write(assembly_1.stem)
+                out.write('\t')
+                out.write(assembly_2.stem)
+                out.write('\t')
+                out.write(str(snp_count))
+                out.write('\n')
+
+
+def output_snp_matrix(args, counts):
+    with open(args.out_fp, 'wt') as out:
+        out.write('\t')
+        out.write('\t'.join(a.stem for a in args.assembly_fps))
+        out.write('\n')
+        for assembly_1 in args.assembly_fps:
+            out.write(assembly_1.stem)
+            out.write('\t')
+            snp_counts = [str(counts[(assembly_1, assembly_2)])
+                          for assembly_2 in args.assembly_fps]
+            out.write('\t'.join(snp_counts))
+            out.write('\n')
+
+
+def output_phylip_distances(args, counts):
+    lengths = {a: total_fasta_length(a) for a in args.assembly_fps}
+    with open(args.out_fp, 'wt') as out:
+        out.write(str(len(args.assembly_fps)))
+        out.write('\n')
+        for a1 in args.assembly_fps:
+            out.write(a1.stem)
+            out.write('\t')
+            distances = [counts[(a1, a2)] / ((lengths[a1] + lengths[a2]) / 2.0)
+                         for a2 in args.assembly_fps]
+            distance_strs = ['%.7f' % d for d in distances]
+            out.write('\t'.join(distance_strs))
+            out.write('\n')
 
 
 class ColourFormatter(logging.Formatter):
@@ -335,7 +395,7 @@ def check_input_count_files(args):
             sys.exit(1)
     for mask_fp in args.mask_fps:
         with mask_fp.open('r') as fh:
-            if fh.readline().rstrip().split() != ['contig_name', 'contig_scores']:
+            if fh.readline().rstrip().split() != ['contig_name', 'masked_positions']:
                 logging.critical(f'The file {mask_fp} does not not look like a mask file')
                 sys.exit(1)
 
@@ -401,6 +461,7 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
 
 def get_base_scores_from_mpileup(assembly_fp, bam_fp):
     # TODO: split this over multiple threads, by using samtools' -r option
+    # TODO: explicitly make the fai file in a temp directory so it doesn't linger afterward
     log_newline()
     logging.info(f'Get base-level metrics for {assembly_fp} using Samtools mpileup')
     command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
@@ -483,7 +544,7 @@ def write_mask_file(scores, min_score_threshold, assembly_fp, total_size):
     mask_fp = f'{assembly_fp}.mask'
     total_masked_bases = 0
     with open(mask_fp, 'wt') as mask:
-        mask.write('\t'.join(('contig_name', 'contig_scores')))
+        mask.write('\t'.join(('contig_name', 'masked_positions')))
         mask.write('\n')
         for contig_name, contig_scores in scores.items():
             mask.write(contig_name)
@@ -562,12 +623,14 @@ def get_snp_count_from_nucmer(assembly_1, mask_1, assembly_2, mask_2, prefix):
     before_mask_count = len(snps)
     snps = [x for x in snps
             if x.a1_pos not in mask_1[x.a1_contig] and x.a2_pos not in mask_2[x.a2_contig]]
-    for snp in snps:
-        logging.debug(str(snp))
     after_mask_count = len(snps)
     mask_diff = before_mask_count - after_mask_count
-    logging.info(f'Found {before_mask_count:,d} SNPs, {mask_diff:,d} of which were masked out '
-                 f'leaving {after_mask_count:,d} SNPs')
+    before_plural = '' if before_mask_count == 1 else 's'
+    verb_plural = 'was' if mask_diff == 1 else 'were'
+    after_plural = '' if after_mask_count == 1 else 's'
+    logging.info(f'Found {before_mask_count:,d} SNP{before_plural}, '
+                 f'{mask_diff:,d} of which {verb_plural} masked out '
+                 f'leaving {after_mask_count:,d} SNP{after_plural}')
     return after_mask_count
 
 
@@ -580,6 +643,19 @@ def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, temp_dir):
     log_newline()
     logging.info(f'Final SNP count between {assembly_1} and {assembly_2}: {final_count:,d}')
     return final_count
+
+
+def total_fasta_length(filename):
+    total_length = 0
+    open_func = get_open_function(filename)
+    with open_func(filename, 'rt') as fasta_file:
+        for line in fasta_file:
+            if line[0] == '>':
+                continue
+            else:
+                total_length += len(line.strip())
+    logging.debug(f'Total length of {filename}: {total_length}')
+    return total_length
 
 
 if __name__ == '__main__':
