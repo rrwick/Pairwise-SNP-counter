@@ -19,6 +19,7 @@ have received a copy of the GNU General Public License along with this program. 
 
 import argparse
 from distutils.version import LooseVersion
+import concurrent.futures
 import gzip
 import logging
 import math
@@ -179,7 +180,7 @@ def run_mask(args, dh):
     else:
         assert args.read_type == 'long'
         bam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh, args.threads)
-    scores, total_size = get_base_scores_from_mpileup(args.assembly_fp, bam_fp)
+    scores, total_size = get_base_scores_from_mpileup(args.assembly_fp, bam_fp, args.threads)
     min_score_threshold = get_score_threshold(scores, args.exclude)
     logging.debug(f'Minimum score threshold set to {min_score_threshold}')
     write_mask_file(scores, min_score_threshold, args.assembly_fp, total_size)
@@ -431,13 +432,39 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
     return bam_fp
 
 
-def get_base_scores_from_mpileup(assembly_fp, bam_fp):
-    # TODO: split this over multiple threads, by using samtools' -r option
-    log_newline()
+def get_base_scores_from_mpileup(assembly_fp, bam_fp, threads):
+    # TODO: test this reproduces expected output
+    # Get all regions and size
+    regions = list()
+    region_re = re.compile('^@SQ\s+SN:(\S+)\s+LN:([0-9]+)$')
+    sam_header = execute_command(f'samtools view -H {bam_fp}').stdout.split('\n')
+    for line in sam_header:
+        if not line.startswith('@SQ'):
+            continue
+        region_name, region_length_str = region_re.match(line).groups()
+        regions.append((region_name, int(region_length_str)))
+
+    # Split regions into separate mpileup tasks
+    max_task_size = 100000
+    region_strings = list()
+    for region_name, region_size in regions:
+        for start in range(0, region_size, max_task_size):
+            # TODO: check for off-by-one errors
+            region_strings.append(f'{region_name}:{start}-{start + max_task_size}')
+
+    # Create tasks and execute
     logging.info(f'Get base-level metrics for {assembly_fp} using Samtools mpileup')
-    command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
-    mpileup_output = execute_command(command).stdout
-    return get_base_scores_from_mpileup_output(mpileup_output)
+    task_args = ((assembly_fp, bam_fp, rs) for rs in region_strings)
+    task_func = get_base_scores_from_mpileup_region
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        results = [r for r in executor.map(lambda x: task_func(*x), task_args)]
+    return get_base_scores_from_mpileup_output(''.join(results))
+
+
+def get_base_scores_from_mpileup_region(assembly_fp, bam_fp, region_string):
+    log_newline()
+    command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -r {region_string} -f {assembly_fp} {bam_fp}'
+    return execute_command(command).stdout
 
 
 def get_base_scores_from_mpileup_output(mpileup_output):
