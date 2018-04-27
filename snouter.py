@@ -397,7 +397,7 @@ def execute_command(command, check=True):
 def index_assembly(assembly_fp, temp_directory):
     log_newline()
     logging.info(f'Building a Bowtie2 index for {assembly_fp}')
-    index_fp = pathlib.Path(temp_directory, assembly_fp)
+    index_fp = pathlib.Path(temp_directory, assembly_fp.name)
     execute_command(f'bowtie2-build {assembly_fp} {index_fp}')
     return index_fp
 
