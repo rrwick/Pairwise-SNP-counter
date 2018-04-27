@@ -19,6 +19,7 @@ have received a copy of the GNU General Public License along with this program. 
 
 import argparse
 from distutils.version import LooseVersion
+import concurrent.futures
 import gzip
 import logging
 import math
@@ -32,44 +33,75 @@ import tempfile
 
 
 def get_arguments():
-    parser = argparse.ArgumentParser()
-
+    parser = argparse.ArgumentParser(add_help=False)
     subparser = parser.add_subparsers(metavar='mask count', dest='command')
+
+    parser.add_argument('-v', '--version', action='store_true', help='Display version info')
+    parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
 
     parser_mask = subparser.add_parser('mask')
     parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
-                             help='Input assembly filepath')
+                             help='input assembly filepath')
     # TODO: --read_fps help info stating expected read order
     parser_mask.add_argument('--read_fps', required=True, nargs='+', type=pathlib.Path,
-                             help='Input read filepaths, space separated')
+                             help='input read filepaths, space separated')
     parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
-                             help='Read type of input reads. [choices: illumina, long]')
+                             help='read type of input reads. [choices: illumina, long]')
     parser_mask.add_argument('--threads', required=False, type=int, default=default_thread_count(),
-                             help='Number of threads')
+                             help='number of threads')
     parser_mask.add_argument('--exclude', required=False, type=float,
-                             help='Percentage of assembly bases to exclude')
+                             help='percentage of assembly bases to exclude')
+    parser_mask.add_argument('--tmp_dir', required=False, type=pathlib.Path,
+                        help='if desired, input a directory to use as temporary')
 
     parser_count = subparser.add_parser('count')
     parser_count.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
-                              help='Input assembly filepaths, space separated')
+                              help='input assembly filepaths, space separated')
     parser_count.add_argument('--mask_fps', nargs='+', type=pathlib.Path,
-                              help='Input masking filepaths, space separated')
+                              help='input masking filepaths, space separated')
     parser_count.add_argument('--out_fp', required=True, type=pathlib.Path,
-                              help='Output filepath')
+                              help='output filepath')
     parser_count.add_argument('--out_format', required=True,
                               choices=['table', 'snp_matrix', 'phylip_distances'],
-                              help='Output format')
-
-    parser.add_argument('--tmp_dir', required=False, type=pathlib.Path,
-                        help='If desired, input a directory to use as temporary')
+                              help='output format')
+    parser_count.add_argument('--temp_dir', required=False, type=pathlib.Path,
+                              help='if desired, input a directory to use as temporary')
 
     args = parser.parse_args()
+    if args.version:
+        print_version()
+        sys.exit(0)
+    if args.help:
+        print_program_info()
+        print_usage()
+        sys.exit(0)
     if not args.command:
-        # TODO: print better help info. see samtools for an example with subcommands
-        parser.print_help()
-        print('\n', end='')
-        parser.error('command options include mask or count')
+        print_program_info()
+        print_usage()
+        print('\nerror: no stage specified (choose from \'mask\', \'count\')')
+        sys.exit(1)
     return args
+
+
+def print_program_info():
+    print('Program: Snouter')
+    print('Version: ', end='')
+    print_version()
+    print('Authors: Ryan Wick (rrwick@gmail.com), Stephen Watts, Alex Tokolyi')
+
+
+def print_version():
+    print('0.0.1')
+
+
+def print_usage():
+    print('\nUsage: snouter.py <command> [options]')
+    print('\nCommands:')
+    print('    mask            create a mask file for an assembly')
+    print('    count           perform pairwise alignment and calculate SNPs')
+    print('\nMisc:')
+    print('    -h, --help      show this help message and exit')
+    print('    -v, --version   show version info and exit')
 
 
 def main():
@@ -151,7 +183,7 @@ def run_mask(args, dh):
     else:
         assert args.read_type == 'long'
         bam_fp = map_long_reads(args.assembly_fp, args.read_fps, dh, args.threads)
-    scores, total_size = get_base_scores_from_mpileup(args.assembly_fp, bam_fp)
+    scores, total_size = get_base_scores_from_mpileup(args.assembly_fp, bam_fp, args.threads)
     min_score_threshold = get_score_threshold(scores, args.exclude)
     logging.debug(f'Minimum score threshold set to {min_score_threshold}')
     write_mask_file(scores, min_score_threshold, args.assembly_fp, total_size)
@@ -424,7 +456,7 @@ def execute_command(command, check=True):
 def index_assembly(assembly_fp, temp_directory):
     log_newline()
     logging.info(f'Building a Bowtie2 index for {assembly_fp}')
-    index_fp = pathlib.Path(temp_directory, assembly_fp)
+    index_fp = pathlib.Path(temp_directory, assembly_fp.name)
     execute_command(f'bowtie2-build {assembly_fp} {index_fp}')
     return index_fp
 
@@ -459,14 +491,40 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
     return bam_fp
 
 
-def get_base_scores_from_mpileup(assembly_fp, bam_fp):
-    # TODO: split this over multiple threads, by using samtools' -r option
+def get_base_scores_from_mpileup(assembly_fp, bam_fp, threads):
+    # TODO: test this reproduces expected output
     # TODO: explicitly make the fai file in a temp directory so it doesn't linger afterward
-    log_newline()
+    # Get all regions and size
+    regions = list()
+    region_re = re.compile('^@SQ\s+SN:(\S+)\s+LN:([0-9]+)$')
+    sam_header = execute_command(f'samtools view -H {bam_fp}').stdout.split('\n')
+    for line in sam_header:
+        if not line.startswith('@SQ'):
+            continue
+        region_name, region_length_str = region_re.match(line).groups()
+        regions.append((region_name, int(region_length_str)))
+
+    # Split regions into separate mpileup tasks
+    max_task_size = 100000
+    region_strings = list()
+    for region_name, region_size in regions:
+        for start in range(0, region_size, max_task_size):
+            # TODO: check for off-by-one errors
+            region_strings.append(f'{region_name}:{start}-{start + max_task_size}')
+
+    # Create tasks and execute
     logging.info(f'Get base-level metrics for {assembly_fp} using Samtools mpileup')
-    command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -f {assembly_fp} {bam_fp}'
-    mpileup_output = execute_command(command).stdout
-    return get_base_scores_from_mpileup_output(mpileup_output)
+    task_args = ((assembly_fp, bam_fp, rs) for rs in region_strings)
+    task_func = get_base_scores_from_mpileup_region
+    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+        results = [r for r in executor.map(lambda x: task_func(*x), task_args)]
+    return get_base_scores_from_mpileup_output(''.join(results))
+
+
+def get_base_scores_from_mpileup_region(assembly_fp, bam_fp, region_string):
+    log_newline()
+    command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -r {region_string} -f {assembly_fp} {bam_fp}'
+    return execute_command(command).stdout
 
 
 def get_base_scores_from_mpileup_output(mpileup_output):
