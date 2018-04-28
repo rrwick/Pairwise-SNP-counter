@@ -75,8 +75,18 @@ Examples:
 `snouter mask --assembly_fp assembly.fasta --read_fps reads_1.fastq.gz reads_2.fastq.gz --read_type illumina`
 * Masking a long read assembly:<br>
 `snouter mask --assembly_fp assembly.fasta --read_fps nanopore_reads.fastq.gz --read_type long`
+* Bulk masking using an input file (specifications below):<br>
+`snouter mask --bulk_mask bulk.tsv`
 
-
+Bulk masking:
+* This file takes the format of a tab separated values file, with the following fields as described below:<br>
+`*EXCLUDE*  READ_TYPE   ASSEMBLY_FP ASSEMBLY_FPS_1 *ASSEMBLY_FPS_2* *ASSEMBLY_FPS_3*`
+* Optional fields are marker with asterix. An example of bulk.tsv  is as follows:<br>
+```
+illumina	as1.fasta	r1_1.fastq.gz	r1_2.fastq.gz
+long	as2.fasta	r2.fastq.gz
+7	illumina	as3.fasta	r3_1.fastq.gz	r3_2.fastq.gz
+```
 
 ### Snouter count
 

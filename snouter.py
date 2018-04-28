@@ -40,12 +40,15 @@ def get_arguments():
     parser.add_argument('-h', '--help', action='store_true', help='Show this help message and exit')
 
     parser_mask = subparser.add_parser('mask')
-    parser_mask.add_argument('--assembly_fp', required=True, type=pathlib.Path,
+    mask_input_type = parser_mask.add_mutually_exclusive_group(required=True)
+    mask_input_type.add_argument('--assembly_fp', type=pathlib.Path,
                              help='input assembly filepath')
+    mask_input_type.add_argument('--bulk_mask', type=pathlib.Path,
+                                 help='Input bulk mask file')
     # TODO: --read_fps help info stating expected read order
-    parser_mask.add_argument('--read_fps', required=True, nargs='+', type=pathlib.Path,
+    parser_mask.add_argument('--read_fps', required=False, nargs='+', type=pathlib.Path,
                              help='input read filepaths, space separated')
-    parser_mask.add_argument('--read_type', required=True, choices=['illumina', 'long'],
+    parser_mask.add_argument('--read_type', required=False, choices=['illumina', 'long'],
                              help='read type of input reads. [choices: illumina, long]')
     parser_mask.add_argument('--threads', required=False, type=int, default=default_thread_count(),
                              help='number of threads')
@@ -123,10 +126,57 @@ def main():
 
     # Execute requested stage
     if args.command == 'mask':
-        run_mask(args, tmp_dir.name)
+        if args.bulk_mask:
+            masks = bulk_mask_parse(args.bulk_mask, args)
+            for m in masks:
+                run_mask(m, tmp_dir.name)
+        else:
+            run_mask(args, tmp_dir.name)
     elif args.command == 'count':
         run_count(args, tmp_dir.name)
 
+
+def bulk_mask_parse(fn, args):
+    class Object(object):
+        pass
+    masks = []
+    with open(fn, 'r') as f:
+        for line in f:
+            line = line.strip().split('\t')
+            if len(line)>2:
+                m = Object()
+                next = 0
+                try:
+                    m.exclude = float(line[next]); next+=1
+                except ValueError:
+                    m.exclude = None
+                m.threads = args.threads
+                m.read_type = line[next]; next+=1
+                m.assembly_fp = pathlib.Path(line[next]); next+=1
+                m.read_fps = line[next:];
+                for i in range(len(m.read_fps)):
+                    m.read_fps[i] = pathlib.Path(m.read_fps[i])
+                masks.append(m)
+    return masks
+
+def check_mask(m, args):
+    check_parsed_file_exists(args.assembly_fp)
+    for read_fp in args.read_fps:
+        check_parsed_file_exists(read_fp)
+    if args.read_type == 'illumina':
+        if len(args.read_fps) > 3:
+            if m>0:
+                logging.critical('--read_fps takes no more than three illumina read sets')
+            else:
+                logging.critical(f'On line {m}, read_fps takes no more than three illumina read sets')
+            sys.exit(1)
+    elif args.read_type == 'long':
+        if len(args.read_fps) > 1:
+            if m>0:
+                logging.critical('--read_fps takes only a single long read set')
+            else:
+                logging.critical(f'On line {m}, read_fps takes only a single long read set')
+            sys.exit(1)
 
 def check_arguments(args):
     log_newline()
@@ -134,22 +184,17 @@ def check_arguments(args):
 
     # TODO: Perform additional argument parsing, checking
     if args.command == 'mask':
-        check_parsed_file_exists(args.assembly_fp)
-        for read_fp in args.read_fps:
-            check_parsed_file_exists(read_fp)
-
-        if args.read_type == 'illumina':
-            if len(args.read_fps) > 3:
-                logging.critical('--read_fps takes no more than three illumina read sets')
+        if args.bulk_mask:
+            if not (args.assembly_fp or args.read_fps or args.read_type or args.exclude):
+                check_parsed_file_exists(args.assembly_fp)
+                masks = bulk_mask_parse(args.bulk_mask, args)
+                for m in range(len(masks)):
+                    check_mask(m+1, masks[m])
+            else:
+                logging.critical('Please only input either a bulk mask file or an individual mask request')
                 sys.exit(1)
-        elif args.read_type == 'long':
-            if len(args.read_fps) > 1:
-                logging.critical('--read_fps takes only a single long read set')
-                sys.exit(1)
-        if args.exclude is None:
-            args.exclude = 2.0 if args.read_type == 'illumina' else 5.0
-            logging.debug(f'--exclude set to {args.exclude} based on read type of '
-                          f'"{args.read_type}"')
+        else:
+            check_mask(-1, args)
 
     if args.command == 'count':
         if len(args.assembly_fps) < 2:
@@ -175,6 +220,10 @@ def check_parsed_file_exists(filepath):
 
 
 def run_mask(args, dh):
+    if args.exclude is None:
+        args.exclude = 2.0 if args.read_type == 'illumina' else 5.0
+        logging.debug(f'--exclude set to {args.exclude} based on read type of '
+                      f'"{args.read_type}" for assembly "{args.assembly_fp}"')
     read_filetype = check_input_mask_files(args)
     # Map reads to assembly
     if args.read_type == 'illumina':
