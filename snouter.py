@@ -154,7 +154,7 @@ def bulk_mask_parse(fn, args):
                 m.threads = args.threads
                 m.read_type = line[next]; next+=1
                 m.assembly_fp = pathlib.Path(line[next]); next+=1
-                m.read_fps = line[next:];
+                m.read_fps = line[next:]
                 for i in range(len(m.read_fps)):
                     m.read_fps[i] = pathlib.Path(m.read_fps[i])
                 masks.append(m)
