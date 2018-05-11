@@ -13,14 +13,16 @@ have received a copy of the GNU General Public License along with this program. 
 
 import unittest
 import pathlib
+
+from . import tests_directory
 import snouter
 
 
 class TestMaskFiles(unittest.TestCase):
 
     def setUp(self):
-        self.assembly_fp = pathlib.Path(__file__).parent / 'temp'
-        self.mask_fp = pathlib.Path(__file__).parent / 'temp.mask'
+        self.assembly_fp = tests_directory / 'temp'
+        self.mask_fp = tests_directory / 'temp.mask'
         self.scores = {'contig_1': [0.1, 0.1, 0.2, 0.2, 0.5, 0.0],
                        'contig_2': [0.8, 0.8, 0.0, 0.1, 0.2, 0.3]}
 

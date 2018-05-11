@@ -12,8 +12,11 @@ have received a copy of the GNU General Public License along with this program. 
 """
 
 import unittest
-import snouter
 import pathlib
+
+
+from . import data_directory
+import snouter
 
 
 class TestScoreThreshold(unittest.TestCase):
@@ -70,7 +73,7 @@ class TestMpileupOutputParsing(unittest.TestCase):
         """
         This mpileup output (mpileup_output_1) comes from an Illumina read assembly.
         """
-        mpileup_output_filename = pathlib.Path(__file__).parent / 'mpileup_output_1'
+        mpileup_output_filename = data_directory / 'mpileup_output_1'
         with open(mpileup_output_filename, 'rt') as mpileup_output_file:
             mpileup_output = mpileup_output_file.read()
         scores, total_size = snouter.get_base_scores_from_mpileup_output(mpileup_output)
@@ -97,7 +100,7 @@ class TestMpileupOutputParsing(unittest.TestCase):
         This mpileup output (mpileup_output_2) comes from a Nanopore read assembly, where indels
         are much more common.
         """
-        mpileup_output_filename = pathlib.Path(__file__).parent / 'mpileup_output_2'
+        mpileup_output_filename = data_directory / 'mpileup_output_2'
         with open(mpileup_output_filename, 'rt') as mpileup_output_file:
             mpileup_output = mpileup_output_file.read()
         scores, total_size = snouter.get_base_scores_from_mpileup_output(mpileup_output)
