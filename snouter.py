@@ -294,28 +294,28 @@ def output_snp_table(args, snps):
     with open(args.out_fp, 'wt') as out:
         out.write('Assembly_1\tA1_contig\tA1_pos\tA1_strand\tA1_seq\t')
         out.write('Assembly_2\tA2_contig\tA2_pos\tA2_strand\tA2_seq\n')
-
         for i in range(len(args.assembly_fps)):
             assembly_1 = args.assembly_fps[i]
             for j in range(i + 1, len(args.assembly_fps)):
                 assembly_2 = args.assembly_fps[j]
-
                 for snp in snps[(assembly_1, assembly_2)]:
-
                     out.write(assembly_1.stem)
                     out.write('\t')
                     out.write(snp.a1_contig)
                     out.write('\t')
                     out.write(str(snp.a1_pos))
                     out.write('\t')
+                    out.write(str(snp.a1_strand))
+                    out.write('\t')
                     out.write(snp.a1_base)
                     out.write('\t')
-
                     out.write(assembly_2.stem)
                     out.write('\t')
                     out.write(snp.a2_contig)
                     out.write('\t')
                     out.write(str(snp.a2_pos))
+                    out.write('\t')
+                    out.write(str(snp.a2_strand))
                     out.write('\t')
                     out.write(snp.a2_base)
                     out.write('\n')
