@@ -1,0 +1,3 @@
+illumina	as1.fasta	r1_1.fastq.gz	r1_2.fastq.gz
+long	as2.fasta	r2.fastq.gz
+7	illumina	as3.fasta	r3_1.fastq.gz	r3_2.fastq.gz
