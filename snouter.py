@@ -582,39 +582,41 @@ def map_long_reads(assembly_fp, read_fps, temp_directory, threads):
 
 
 def get_base_scores_from_mpileup(assembly_fp, bam_fp, threads):
-    # TODO: test this reproduces expected output
     # TODO: explicitly make the fai file in a temp directory so it doesn't linger afterward
-    # Get all regions and size
-    regions = list()
-    region_re = re.compile('^@SQ\s+SN:(\S+)\s+LN:([0-9]+)$')
-    sam_header = execute_command(f'samtools view -H {bam_fp}').stdout.split('\n')
-    for line in sam_header:
-        if not line.startswith('@SQ'):
-            continue
-        region_name, region_length_str = region_re.match(line).groups()
-        regions.append((region_name, int(region_length_str)))
+    # Command is split so that we can optionally place in region arguments
+    command = 'samtools mpileup -A -B -Q0 -vu -t INFO/AD'
+    io_args = f'-f {assembly_fp} {bam_fp}'
 
-    # Split regions into separate mpileup tasks
-    max_task_size = 100000
-    region_strings = list()
-    for region_name, region_size in regions:
-        for start in range(0, region_size, max_task_size):
-            # TODO: check for off-by-one errors
-            region_strings.append(f'{region_name}:{start}-{start + max_task_size}')
-
-    # Create tasks and execute
-    logging.info(f'Get base-level metrics for {assembly_fp} using Samtools mpileup')
-    task_args = ((assembly_fp, bam_fp, rs) for rs in region_strings)
-    task_func = get_base_scores_from_mpileup_region
-    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
-        results = [r for r in executor.map(lambda x: task_func(*x), task_args)]
-    return get_base_scores_from_mpileup_output(''.join(results))
-
-
-def get_base_scores_from_mpileup_region(assembly_fp, bam_fp, region_string):
     log_newline()
-    command = f'samtools mpileup -A -B -Q0 -vu -t INFO/AD -r {region_string} -f {assembly_fp} {bam_fp}'
-    return execute_command(command).stdout
+    logging.info(f'Get base-level metrics for {assembly_fp} using Samtools mpileup')
+
+    # If running single thread, don't bother splitting into regions
+    if threads == 1:
+        mpileup_output = execute_command(f'{command} {io_args}').stdout
+    else:
+        # Get all regions and size
+        regions = list()
+        region_re = re.compile('^@SQ\s+SN:(\S+)\s+LN:([0-9]+)$')
+        sam_header = execute_command(f'samtools view -H {bam_fp}').stdout.split('\n')
+        for line in sam_header:
+            if not line.startswith('@SQ'):
+                continue
+            region_name, region_length_str = region_re.match(line).groups()
+            regions.append((region_name, int(region_length_str)))
+
+        # Split regions into separate mpileup tasks
+        max_task_size = 500000
+        region_args = list()
+        for region_name, region_size in regions:
+            for start in range(0, region_size, max_task_size):
+                region_args.append(f'-r {region_name}:{start}-{start + max_task_size - 1}')
+
+        # Create tasks and execute
+        task = lambda region_arg: execute_command(f'{command} {region_arg} {io_args}').stdout
+        with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
+            results = [r for r in executor.map(task, region_args)]
+        mpileup_output = ''.join(results)
+    return get_base_scores_from_mpileup_output(mpileup_output)
 
 
 def get_base_scores_from_mpileup_output(mpileup_output):
