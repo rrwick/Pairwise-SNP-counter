@@ -80,8 +80,8 @@ Examples:
 
 Bulk masking:
 * This file takes the format of a tab separated values file, with the following fields as described below:<br>
-`*EXCLUDE*  READ_TYPE   ASSEMBLY_FP ASSEMBLY_FPS_1 *ASSEMBLY_FPS_2* *ASSEMBLY_FPS_3*`
-* Optional fields are marker with asterix. An example of bulk.tsv  is as follows:<br>
+`*EXCLUDE*  READ_TYPE   ASSEMBLY_FP READ_FPS_1 *READ_FPS_2* *READ_FPS_3*`
+* Optional fields are marked with asterix. An example of bulk.tsv  is as follows:<br>
 ```
 illumina	as1.fasta	r1_1.fastq.gz	r1_2.fastq.gz
 long	as2.fasta	r2.fastq.gz

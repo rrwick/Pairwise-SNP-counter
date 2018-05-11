@@ -128,7 +128,7 @@ def main():
     # Execute requested stage
     if args.command == 'mask':
         if args.bulk_mask:
-            masks = bulk_mask_parse(args.bulk_mask, args)
+            masks = bulk_mask_parse(args.bulk_mask, args.threads)
             for m in masks:
                 run_mask(m, tmp_dir.name)
         else:
@@ -137,7 +137,7 @@ def main():
         run_count(args, tmp_dir.name)
 
 
-def bulk_mask_parse(fn, args):
+def bulk_mask_parse(fn, threads):
     class Object(object):
         pass
     masks = []
@@ -151,7 +151,7 @@ def bulk_mask_parse(fn, args):
                     m.exclude = float(line[next]); next+=1
                 except ValueError:
                     m.exclude = None
-                m.threads = args.threads
+                m.threads = threads
                 m.read_type = line[next]; next+=1
                 m.assembly_fp = pathlib.Path(line[next]); next+=1
                 m.read_fps = line[next:]
@@ -190,7 +190,7 @@ def check_arguments(args):
         if args.bulk_mask:
             if not (args.assembly_fp or args.read_fps or args.read_type or args.exclude):
                 check_parsed_file_exists(args.assembly_fp)
-                masks = bulk_mask_parse(args.bulk_mask, args)
+                masks = bulk_mask_parse(args.bulk_mask, args.threads)
                 for m in range(len(masks)):
                     check_mask(m+1, masks[m])
             else:
