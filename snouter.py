@@ -65,7 +65,8 @@ def get_arguments():
     parser_count.add_argument('--out_fp', required=True, type=pathlib.Path,
                               help='output filepath')
     parser_count.add_argument('--out_format', required=True,
-                              choices=['table', 'snp_matrix', 'phylip_distances'],
+                              choices=['count_table', 'snp_table', 'count_matrix',
+                                       'phylip_distances'],
                               help='output format')
     parser_count.add_argument('--tmp_dir', required=False, type=pathlib.Path,
                               help='if desired, input a directory to use as temporary')
@@ -159,6 +160,7 @@ def bulk_mask_parse(fn, args):
                 masks.append(m)
     return masks
 
+
 def check_mask(m, args):
     check_parsed_file_exists(args.assembly_fp)
     for read_fp in args.read_fps:
@@ -177,6 +179,7 @@ def check_mask(m, args):
             else:
                 logging.critical(f'On line {m}, read_fps takes only a single long read set')
             sys.exit(1)
+
 
 def check_arguments(args):
     log_newline()
@@ -241,6 +244,7 @@ def run_mask(args, dh):
 def run_count(args, dh):
     check_input_count_files(args)
     counts = {}
+    snp_dict = {}
     for i in range(len(args.assembly_fps)):
         assembly_1 = args.assembly_fps[i]
         counts[(assembly_1, assembly_1)] = 0
@@ -248,23 +252,29 @@ def run_count(args, dh):
         for j in range(i+1, len(args.assembly_fps)):
             assembly_2 = args.assembly_fps[j]
             mask_2 = load_mask_file(args.mask_fps[j])
-            snp_count = get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, dh)
+            snp_count, snps = get_pairwise_snps(assembly_1, mask_1, assembly_2, mask_2, dh)
             counts[(assembly_1, assembly_2)] = snp_count
             counts[(assembly_2, assembly_1)] = snp_count
+            snp_dict[(assembly_1, assembly_2)] = snps
+            snp_dict[(assembly_2, assembly_1)] = flip_snps(snps)
 
-    out_format_name = {'table': 'table', 'snp_matrix': 'SNP matrix',
+    out_format_name = {'count_table': 'SNP count table',
+                       'snp_table': 'SNP detail table',
+                       'count_matrix': 'SNP count matrix',
                        'phylip_distances': 'PHYLIP distance matrix'}[args.out_format]
     log_newline()
     logging.info(f'Writing {out_format_name} to {args.out_fp}')
-    if args.out_format == 'table':
-        output_table(args, counts)
-    elif args.out_format == 'snp_matrix':
-        output_snp_matrix(args, counts)
+    if args.out_format == 'count_table':
+        output_count_table(args, counts)
+    elif args.out_format == 'snp_table':
+        output_snp_table(args, snp_dict)
+    elif args.out_format == 'count_matrix':
+        output_count_matrix(args, counts)
     elif args.out_format == 'phylip_distances':
         output_phylip_distances(args, counts)
 
 
-def output_table(args, counts):
+def output_count_table(args, counts):
     with open(args.out_fp, 'wt') as out:
         out.write('Assembly_1\tAssembly_2\tSNP_count\n')
         for i in range(len(args.assembly_fps)):
@@ -280,7 +290,38 @@ def output_table(args, counts):
                 out.write('\n')
 
 
-def output_snp_matrix(args, counts):
+def output_snp_table(args, snps):
+    with open(args.out_fp, 'wt') as out:
+        out.write('Assembly_1\tA1_contig\tA1_pos\tA1_strand\tA1_seq\t')
+        out.write('Assembly_2\tA2_contig\tA2_pos\tA2_strand\tA2_seq\n')
+
+        for i in range(len(args.assembly_fps)):
+            assembly_1 = args.assembly_fps[i]
+            for j in range(i + 1, len(args.assembly_fps)):
+                assembly_2 = args.assembly_fps[j]
+
+                for snp in snps[(assembly_1, assembly_2)]:
+
+                    out.write(assembly_1.stem)
+                    out.write('\t')
+                    out.write(snp.a1_contig)
+                    out.write('\t')
+                    out.write(str(snp.a1_pos))
+                    out.write('\t')
+                    out.write(snp.a1_base)
+                    out.write('\t')
+
+                    out.write(assembly_2.stem)
+                    out.write('\t')
+                    out.write(snp.a2_contig)
+                    out.write('\t')
+                    out.write(str(snp.a2_pos))
+                    out.write('\t')
+                    out.write(snp.a2_base)
+                    out.write('\n')
+
+
+def output_count_matrix(args, counts):
     with open(args.out_fp, 'wt') as out:
         out.write('\t')
         out.write('\t'.join(a.stem for a in args.assembly_fps))
@@ -720,8 +761,14 @@ class Snp(object):
     def __hash__(self):
         return hash(self.data_tuple())
 
+    def flip(self):
+        self.a1_base, self.a2_base = self.a2_base, self.a1_base
+        self.a1_pos, self.a2_pos = self.a2_pos, self.a1_pos
+        self.a1_strand, self.a2_strand = self.a2_strand, self.a1_strand
+        self.a1_contig, self.a2_contig = self.a2_contig, self.a1_contig
 
-def get_snp_count_from_nucmer(assembly_1, mask_1, assembly_2, mask_2, prefix):
+
+def get_snps_from_nucmer(assembly_1, mask_1, assembly_2, mask_2, prefix):
     log_newline()
     logging.info(f'Aligning {assembly_1} and {assembly_2} using numcer')
     execute_command(f'nucmer --prefix={prefix} {assembly_1} {assembly_2}')
@@ -738,18 +785,30 @@ def get_snp_count_from_nucmer(assembly_1, mask_1, assembly_2, mask_2, prefix):
     logging.info(f'Found {before_mask_count:,d} SNP{before_plural}, '
                  f'{mask_diff:,d} of which {verb_plural} masked out '
                  f'leaving {after_mask_count:,d} SNP{after_plural}')
-    return after_mask_count
+    return after_mask_count, snps
 
 
-def get_pairwise_snp_count(assembly_1, mask_1, assembly_2, mask_2, temp_dir):
-    snps_1_vs_2 = get_snp_count_from_nucmer(assembly_1, mask_1, assembly_2, mask_2,
-                                            pathlib.Path(temp_dir, 'out1'))
-    snps_2_vs_1 = get_snp_count_from_nucmer(assembly_2, mask_2, assembly_1, mask_1,
-                                            pathlib.Path(temp_dir, 'out2'))
-    final_count = min(snps_1_vs_2, snps_2_vs_1)
+def get_pairwise_snps(assembly_1, mask_1, assembly_2, mask_2, temp_dir):
+    counts_1_vs_2, snps_1_vs_2 = get_snps_from_nucmer(assembly_1, mask_1, assembly_2, mask_2,
+                                                      pathlib.Path(temp_dir, 'out1'))
+    counts_2_vs_1, snps_2_vs_1 = get_snps_from_nucmer(assembly_2, mask_2, assembly_1, mask_1,
+                                                      pathlib.Path(temp_dir, 'out2'))
+    if counts_1_vs_2 <= counts_2_vs_1:
+        final_count = counts_1_vs_2
+        final_snps = snps_1_vs_2
+    else:
+        final_count = counts_2_vs_1
+        final_snps = flip_snps(snps_2_vs_1)
     log_newline()
     logging.info(f'Final SNP count between {assembly_1} and {assembly_2}: {final_count:,d}')
-    return final_count
+    return final_count, final_snps
+
+
+def flip_snps(snps):
+    flipped_snps = [x for x in snps]
+    for s in flipped_snps:
+        s.flip()
+    return flipped_snps
 
 
 def total_fasta_length(filename):
