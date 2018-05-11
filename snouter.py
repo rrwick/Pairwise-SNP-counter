@@ -55,7 +55,7 @@ def get_arguments():
     parser_mask.add_argument('--exclude', required=False, type=float,
                              help='percentage of assembly bases to exclude')
     parser_mask.add_argument('--tmp_dir', required=False, type=pathlib.Path,
-                        help='if desired, input a directory to use as temporary')
+                             help='if desired, input a directory to use as temporary')
 
     parser_count = subparser.add_parser('count')
     parser_count.add_argument('--assembly_fps', required=True, nargs='+', type=pathlib.Path,
@@ -67,7 +67,7 @@ def get_arguments():
     parser_count.add_argument('--out_format', required=True,
                               choices=['table', 'snp_matrix', 'phylip_distances'],
                               help='output format')
-    parser_count.add_argument('--temp_dir', required=False, type=pathlib.Path,
+    parser_count.add_argument('--tmp_dir', required=False, type=pathlib.Path,
                               help='if desired, input a directory to use as temporary')
 
     args = parser.parse_args()
