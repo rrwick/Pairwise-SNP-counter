@@ -630,6 +630,9 @@ def get_base_scores_from_mpileup_output(mpileup_output):
     for line in mpileup_output.splitlines():
         if line.startswith('##contig='):
             contig_name = re.search(r'<ID=([^, ]+)', line).group(1)
+            # TODO: ensure that input assemblies have unique contig names
+            if contig_name in scores:
+                continue
             contig_length = int(re.search(r'length=(\d+)', line).group(1))
             total_size += contig_length
             logging.debug(f'contig {contig_name}: {contig_length} bp')
